@@ -43,10 +43,12 @@ def create_tables(engine):
     logger.info("Все таблицы созданы.")
 
 def init_db(engine, session_factory) -> None:
+    """
+    Создание таблиц и первого пользователя admin
+    """
     create_tables(engine)
     admin = get_user(session_factory, login="admin")
     if not admin:
-        logger.info("Пользователь admin не найден. Создаю пользователя admin.")
         hash, salt = hash_password("admin")
         create_user(
                     session_factory,
@@ -57,4 +59,3 @@ def init_db(engine, session_factory) -> None:
                     last_name="",
                     is_admin=True
                 )
-        logger.info("Пользователь admin создан.")
