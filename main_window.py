@@ -2,6 +2,11 @@ from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLa
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, Signal
 
+from src.gui.widgets.locomotives_tab import LocomotivesTab
+from src.gui.widgets.details_tab import DetailsTab
+from src.gui.widgets.maintenance_tab import MaintenanceTab
+from app.db.db import session_factory
+
 
 class MainWindow(QMainWindow):
     """
@@ -19,7 +24,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle("Grandmaket LokoDB")
-        self.resize(1000, 700)
+        self.resize(1200, 800)
 
         # Центральный виджет
         central_widget = QWidget()
@@ -33,15 +38,14 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)  # Более плоский стиль вкладок
         
-        # Заглушки для вкладок (будут заполнены позже)
-        self.trains_tab = QLabel("Таблица поездов (в разработке)")
-        self.trains_tab.setAlignment(Qt.AlignCenter)
-        
-        self.parts_tab = QLabel("Таблица деталей (в разработке)")
-        self.parts_tab.setAlignment(Qt.AlignCenter)
+        # Создаем вкладки с реальными виджетами
+        self.trains_tab = LocomotivesTab(session_factory)
+        self.parts_tab = DetailsTab(session_factory)
+        self.maintenance_tab = MaintenanceTab(session_factory)
 
-        self.tabs.addTab(self.trains_tab, "Поезда")
+        self.tabs.addTab(self.trains_tab, "Локомотивы")
         self.tabs.addTab(self.parts_tab, "Детали")
+        self.tabs.addTab(self.maintenance_tab, "Листы обслуживания")
 
         layout.addWidget(self.tabs)
         
