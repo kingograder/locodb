@@ -7,9 +7,10 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QMessageBox
 )
 from PySide6.QtCore import QAbstractTableModel, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QDialog
 
 from src.services.locomotive_service import LocomotiveService
+from dialogs import AddLocomotiveDialog
 
 
 class LocomotiveTableModel(QAbstractTableModel):
@@ -153,5 +154,24 @@ class LocomotivesTab(QWidget):
 
     def _on_add_clicked(self):
         """Обработчик нажатия кнопки добавления."""
-        # Пока просто заглушка - будет реализовано в диалоге
-        QMessageBox.information(self, "Информация", "Диалог добавления локомотива будет реализован в следующем шаге.")
+        # Получаем сессию из фабрики
+        db = self.session_factory()
+        try:
+            # Для демонстрации используем первого пользователя (admin)
+            # В реальном приложении нужно передавать текущего пользователя из MainWindow
+            from models import User
+            current_user = db.query(User).first()
+            
+            if not current_user:
+                QMessageBox.warning(self, "Ошибка", "Пользователь не найден в БД.")
+                return
+                
+            dialog = AddLocomotiveDialog(db, current_user, self)
+            if dialog.exec() == QDialog.Accepted:
+                # После успешного добавления обновляем таблицу
+                self._load_data()
+                QMessageBox.information(self, "Успех", "Локомотив успешно добавлен!")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось добавить локомотив: {e}")
+        finally:
+            db.close()
