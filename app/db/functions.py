@@ -11,7 +11,7 @@ def get_user(session_factory, login) -> User | None:
     with session_factory() as session:
         return session.scalar(select(User).where(User.login == login))
 
-def create_user(session_factory, login: str, password_hash: str, password_salt: str, first_name: str, last_name: str, is_admin: bool) -> None:
+def add_user(session_factory, login: str, password_hash: str, password_salt: str, first_name: str, last_name: str, is_admin: bool) -> None:
     new_user = User(login=login, password_hash=password_hash, first_name=first_name, last_name=last_name, is_admin=is_admin)
     with session_factory() as session:
             existing = session.scalar(select(User).where(User.login == login))
@@ -50,7 +50,7 @@ def init_db(engine, session_factory) -> None:
     admin = get_user(session_factory, login="admin")
     if not admin:
         hash, salt = hash_password("admin")
-        create_user(
+        add_user(
                     session_factory,
                     login="admin",
                     password_hash=hash,
