@@ -1,1 +1,1 @@
-Nothing should be ignored based on the provided file changes, as they only include source code files (.py) without any build artifacts, dependencies, or temporary files.
+(src/gui/widgets/locomotives_tab.py is a source file, and there are no build artifacts, dependencies, or temporary files in the changes)

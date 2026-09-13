@@ -4,10 +4,10 @@
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableView, QPushButton, QHBoxLayout,
-    QAbstractItemView, QMessageBox
+    QAbstractItemView, QMessageBox, QDialog
 )
 from PySide6.QtCore import QAbstractTableModel, Qt, Signal
-from PySide6.QtGui import QColor, QDialog
+from PySide6.QtGui import QColor
 
 from src.services.locomotive_service import LocomotiveService
 from dialogs import AddLocomotiveDialog
