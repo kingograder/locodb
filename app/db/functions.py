@@ -59,3 +59,26 @@ def init_db(engine, session_factory) -> None:
                     last_name="",
                     is_admin=True
                 )
+
+def add_maintenance():
+    pass
+
+def mark_on_delete_maintenance():
+    pass
+
+"""
+Работа с моделью локомотива
+"""
+
+def add_lokomotive_model():
+    pass
+
+def remove_lokomotive_model():
+    pass
+
+def get_lokomotive_model():
+    pass
+
+"""
+Работа с локомотивом
+"""
