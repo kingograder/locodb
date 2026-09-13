@@ -1,7 +1,5 @@
 import logging
 import sys
-
-from app.layouts.auth import Ui_Auth
 from datetime import datetime
 from pathlib import Path
 from app.db.db import engine, session_factory
@@ -35,9 +33,3 @@ if __name__ == "__main__":
     create_directories([Path("./data"), Path("./data/logs")])
     setup_logging()
     init_db(engine, session_factory)
-
-    app = QApplication(sys.argv)
-    window = AuthWindow()
-    window.showMaximized()
-
-    sys.exit(app.exec())
