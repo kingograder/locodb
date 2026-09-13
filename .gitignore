@@ -1,16 +1,1 @@
-.env
-uv.lock
-data
-logs
-*.sqlite
-
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
+(src/gui/widgets/locomotives_tab.py is a source file, and there are no build artifacts, dependencies, or temporary files in the changes)
