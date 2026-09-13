@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from app.db.db import engine, session_factory
 from app.db.functions import init_db
+from app.app import ScreensStack
+from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
 
@@ -33,3 +35,8 @@ if __name__ == "__main__":
     create_directories([Path("./data"), Path("./data/logs")])
     setup_logging()
     init_db(engine, session_factory)
+    app = QApplication(sys.argv)
+    stack = ScreensStack()
+    stack.resize(400, 300)
+    stack.show()
+    sys.exit(app.exec())
