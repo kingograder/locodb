@@ -2,12 +2,16 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from app.db.db import engine, session_factory
 from app.db.functions import init_db
 from app.app import ScreensStack
 from PySide6.QtWidgets import QApplication
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+engine = create_engine("sqlite:///./data/database.sqlite", echo=True)
+session_factory = sessionmaker(engine, expire_on_commit=False)
 logger = logging.getLogger(__name__)
+
 
 def create_directories(dirs: list[Path]) -> None:
     """
@@ -36,7 +40,7 @@ if __name__ == "__main__":
     setup_logging()
     init_db(engine, session_factory)
     app = QApplication(sys.argv)
-    stack = ScreensStack()
-    stack.resize(400, 300)
+    stack = ScreensStack(session_factory)
+    stack.resize(1280, 720)
     stack.show()
     sys.exit(app.exec())
