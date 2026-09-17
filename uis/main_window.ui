@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>main_window</class>
+ <widget class="QMainWindow" name="main_window">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="maintenances_tab">
+       <attribute name="title">
+        <string>Листы обслуживания</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2"/>
+      </widget>
+      <widget class="QWidget" name="locomotives_tab">
+       <attribute name="title">
+        <string>Локомотивы</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_3"/>
+      </widget>
+      <widget class="QWidget" name="details_tab">
+       <attribute name="title">
+        <string>Детали</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4"/>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="defaultUp">
+    <bool>false</bool>
+   </property>
+   <property name="nativeMenuBar">
+    <bool>true</bool>
+   </property>
+   <widget class="QMenu" name="user_menuTab">
+    <property name="title">
+     <string>Пользователь</string>
+    </property>
+    <addaction name="user_menuItem"/>
+    <addaction name="userManagement_menuItem"/>
+    <addaction name="changeUser_menuItem"/>
+   </widget>
+   <widget class="QMenu" name="other_menuTab">
+    <property name="title">
+     <string>Прочее</string>
+    </property>
+    <addaction name="programmSettings_menuItem"/>
+    <addaction name="aboutProgram_menuItem"/>
+    <addaction name="aboutQt_menuItem"/>
+   </widget>
+   <addaction name="user_menuTab"/>
+   <addaction name="other_menuTab"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="aboutProgram_menuItem">
+   <property name="text">
+    <string>О Програме</string>
+   </property>
+  </action>
+  <action name="user_menuItem">
+   <property name="text">
+    <string>John Blade</string>
+   </property>
+  </action>
+  <action name="userManagement_menuItem">
+   <property name="text">
+    <string>Управление пользователями</string>
+   </property>
+  </action>
+  <action name="changeUser_menuItem">
+   <property name="text">
+    <string>Сменить пользователя</string>
+   </property>
+  </action>
+  <action name="aboutQt_menuItem">
+   <property name="text">
+    <string>О Qt</string>
+   </property>
+  </action>
+  <action name="programmSettings_menuItem">
+   <property name="text">
+    <string>Настройки</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

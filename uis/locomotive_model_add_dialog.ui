@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>addLocomotiveModel_dialog</class>
+ <widget class="QWidget" name="addLocomotiveModel_dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>557</width>
+    <height>270</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="locomotiveModel_label">
+     <property name="text">
+      <string>Модель</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="locomotiveModel_lineEdit"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="loadImage_label">
+     <property name="text">
+      <string>Загрузить изображение</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="filechooser_hLayout">
+     <property name="spacing">
+      <number>0</number>
+     </property>
+     <item>
+      <widget class="QLineEdit" name="filepath"/>
+     </item>
+     <item>
+      <widget class="QToolButton" name="filepicker">
+       <property name="text">
+        <string>...</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="manufacturer_label">
+     <property name="text">
+      <string>Производитель</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="manufacturer_lineEdit"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="locomotiveCode_label">
+     <property name="text">
+      <string>Артикул</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="locomotiveCode_lineEdit"/>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="addLocomotiveModel_buttonBox">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

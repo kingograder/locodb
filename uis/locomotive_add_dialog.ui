@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>addLocomotive_dialog</class>
+ <widget class="QWidget" name="addLocomotive_dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>422</width>
+    <height>413</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="comment_label">
+     <property name="text">
+      <string>Комментарий</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="comment_textEdit"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="locomotiveModel_label">
+     <property name="text">
+      <string>Модель локомотива</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QComboBox" name="locomotiveModel_comboBox"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="number_label">
+     <property name="text">
+      <string>Номер</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="number_lineEdit"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="system_label">
+     <property name="text">
+      <string>Система</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSpinBox" name="system_spinBox"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="typt_label">
+     <property name="text">
+      <string>Тип</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="type_lineEdit"/>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="addLocomotive_buttonBox">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
