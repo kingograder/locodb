@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>373</width>
-    <height>212</height>
+    <width>384</width>
+    <height>260</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -35,6 +35,16 @@
     <widget class="QLineEdit" name="detailManufacturer_lineEdit"/>
    </item>
    <item>
+    <widget class="QLabel" name="detailName_label">
+     <property name="text">
+      <string>Наименование</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="detailCode_lineEdit_2"/>
+   </item>
+   <item>
     <widget class="QLabel" name="detailCount_label">
      <property name="text">
       <string>Количество</string>
@@ -42,7 +52,11 @@
     </widget>
    </item>
    <item>
-    <widget class="QLineEdit" name="detailCount_lineEdit"/>
+    <widget class="QLineEdit" name="detailCount_lineEdit">
+     <property name="maxLength">
+      <number>2</number>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttonBox">

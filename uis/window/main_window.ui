@@ -18,25 +18,40 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="maintenances_tab">
+       <property name="layoutDirection">
+        <enum>Qt::LayoutDirection::LeftToRight</enum>
+       </property>
        <attribute name="title">
         <string>Листы обслуживания</string>
        </attribute>
-       <layout class="QVBoxLayout" name="verticalLayout_2"/>
       </widget>
       <widget class="QWidget" name="locomotives_tab">
        <attribute name="title">
         <string>Локомотивы</string>
        </attribute>
-       <layout class="QVBoxLayout" name="verticalLayout_3"/>
       </widget>
       <widget class="QWidget" name="details_tab">
        <attribute name="title">
         <string>Детали</string>
        </attribute>
-       <layout class="QVBoxLayout" name="verticalLayout_4"/>
+      </widget>
+      <widget class="QWidget" name="locomotiveModels_tab">
+       <attribute name="title">
+        <string>Модели локомотивов</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="maintenanceTypes_tab">
+       <attribute name="title">
+        <string>Типы обслуживания</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="manufactures_tab">
+       <attribute name="title">
+        <string>Производители</string>
+       </attribute>
       </widget>
      </widget>
     </item>
@@ -48,7 +63,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>23</height>
+     <height>33</height>
     </rect>
    </property>
    <property name="defaultUp">

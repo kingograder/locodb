@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>557</width>
-    <height>270</height>
+    <width>354</width>
+    <height>264</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -20,6 +20,37 @@
    <string>Form</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="locomotiveCode_label">
+     <property name="text">
+      <string>Артикул</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="locomotiveCode_lineEdit"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="manufacturer_label">
+     <property name="text">
+      <string>Производитель</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="manufacturer_hLayout">
+     <item>
+      <widget class="QComboBox" name="maufacturer_comboBox"/>
+     </item>
+     <item>
+      <widget class="QToolButton" name="maufacturer_toolButton">
+       <property name="text">
+        <string>...</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
    <item>
     <widget class="QLabel" name="locomotiveModel_label">
      <property name="text">
@@ -43,36 +74,16 @@
       <number>0</number>
      </property>
      <item>
-      <widget class="QLineEdit" name="filepath"/>
+      <widget class="QLineEdit" name="filepath_lineEdit"/>
      </item>
      <item>
-      <widget class="QToolButton" name="filepicker">
+      <widget class="QToolButton" name="filepicker_toolButton">
        <property name="text">
         <string>...</string>
        </property>
       </widget>
      </item>
     </layout>
-   </item>
-   <item>
-    <widget class="QLabel" name="manufacturer_label">
-     <property name="text">
-      <string>Производитель</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLineEdit" name="manufacturer_lineEdit"/>
-   </item>
-   <item>
-    <widget class="QLabel" name="locomotiveCode_label">
-     <property name="text">
-      <string>Артикул</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLineEdit" name="locomotiveCode_lineEdit"/>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="addLocomotiveModel_buttonBox">
