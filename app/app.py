@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 IMAGE_FILTER = "Изображения (*.png *.jpg *.jpeg *.bmp)"
 BOOL_YES = "Да"
 BOOL_NO = "Нет"
-
+NO_DATA = "—"
 
 def ensure_not_last_active_admin(
     session_factory: sessionmaker,
@@ -678,9 +678,9 @@ class MaintenancesTab(BaseListTab):
             str(item.id),
             f"{item.locomotive.system} {item.locomotive.number}",
             item.maintenance_date.strftime("%d.%m.%Y"),
-            item.maintenance_type.name if item.maintenance_type else "—",
+            item.maintenance_type.name if item.maintenance_type else NO_DATA,
             item.description or "",
-            item.created_by.login if item.created_by else "—",
+            item.created_by.login if item.created_by else NO_DATA,
         ]
 
     def _open_dialog(self, item: Maintenance | None = None) -> QDialog:
@@ -735,7 +735,7 @@ class LocomotivesTab(BaseListTab):
             model.manufacturer if model else "—",
             model.code if model else "—",
             item.created_at.strftime("%d.%m.%Y %H:%M"),
-            item.updated_by.login if item.updated_by else "—",
+            item.updated_by.login if item.updated_by else NO_DATA,
         ]
 
     def _open_dialog(self, item: Locomotive | None = None) -> QDialog:
