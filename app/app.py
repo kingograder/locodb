@@ -1,17 +1,25 @@
+import logging
 from contextlib import contextmanager
-from typing import Generic, TypeVar
+from datetime import datetime
+from typing import Any
 
-from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QFileDialog, QHeaderView,
-    QMainWindow, QMessageBox, QStackedWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget,
-)
-from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import QDate, Signal, Slot
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
+    QFileDialog,
+    QHeaderView,
+    QMainWindow,
+    QMessageBox,
+    QStackedWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
-import logging
-from datetime import datetime
+from sqlalchemy.orm.strategy_options import raiseload
 
 from app.db.functions import (
     add_detail,
@@ -57,25 +65,9 @@ from app.widgets.ui_detail_add_dialog import Ui_addDetail_dialog
 
 logger = logging.getLogger(__name__)
 
-# Тип сущности для диалогов и вкладок
-T = TypeVar("T")
-
-# Константы
 IMAGE_FILTER = "Изображения (*.png *.jpg *.jpeg *.bmp)"
 BOOL_YES = "Да"
 BOOL_NO = "Нет"
-
-
-class _RequiresImplementations:
-    """Миксин: проверяет, что наследник реализовал обязательные методы."""
-
-    _required_methods: tuple[str, ...] = ()
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        for name in cls._required_methods:
-            if not hasattr(cls, name):
-                raise TypeError(f"{cls.__name__}: отсутствует обязательный метод {name}")
 
 
 def ensure_not_last_active_admin(
@@ -86,10 +78,7 @@ def ensure_not_last_active_admin(
     will_be_active: bool,
     parent: QWidget | None = None,
 ) -> bool:
-    """Проверяет, не останется ли система без активных администраторов.
-
-    Возвращает True, если изменение допустимо; False — если его нужно отменить.
-    """
+    """Проверяет, не останется ли система без активных администраторов."""
     if will_be_admin and will_be_active:
         return True
 
@@ -102,8 +91,10 @@ def ensure_not_last_active_admin(
             msg = "Нельзя разжаловать последнего активного администратора"
         else:
             msg = "Нельзя отключить последнего активного администратора"
+
         QMessageBox.warning(parent, "Внимание", msg)
         return False
+
     return True
 
 
@@ -112,7 +103,7 @@ class AuthScreen(QWidget):
 
     auth_successful = Signal(User)
 
-    def __init__(self, session_factory: sessionmaker, parent=None):
+    def __init__(self, session_factory: sessionmaker, parent: QWidget | None = None):
         super().__init__(parent)
         self.session_factory = session_factory
         self._busy = False
@@ -135,7 +126,7 @@ class AuthScreen(QWidget):
             self._busy = False
             self.ui.enter_button.setEnabled(True)
 
-    def _enter_auth(self):
+    def _enter_auth(self) -> None:
         """Проверяет логин и пароль, отправляет сигнал при успехе."""
         if self._busy:
             return
@@ -161,42 +152,29 @@ class AuthScreen(QWidget):
 
         self.auth_successful.emit(user)
 
-    def reset_form(self):
+    def reset_form(self) -> None:
         """Очищает поля ввода."""
         self.ui.login_lineEdit.clear()
         self.ui.pass_lineEdit.clear()
         self.ui.login_lineEdit.setFocus()
 
 
-class _BaseEntityDialog(QDialog, Generic[T], _RequiresImplementations):
-    """Базовый диалог создания и редактирования сущности."""
-
-    _required_methods = (
-        "_setup_ui",
-        "_connect_buttons",
-        "_create_title",
-        "_edit_title",
-        "_load_data",
-        "_collect_fields",
-        "_validate",
-        "_add_to_db",
-        "_update_in_db",
-    )
-
+class BaseEntityDialog(QDialog):
     not_found_error: type[Exception] = Exception
 
     def __init__(
         self,
         session_factory: sessionmaker,
         current_user: User,
-        entity: T | None = None,
-        parent=None,
+        entity: Any | None = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.session_factory = session_factory
         self.current_user = current_user
-        self.entity: T | None = entity
+        self.entity = entity
 
+        # Вызываем методы, которые наследник обязан определить сам
         self._setup_ui()
         self._connect_buttons()
 
@@ -206,44 +184,14 @@ class _BaseEntityDialog(QDialog, Generic[T], _RequiresImplementations):
             self.setWindowTitle(self._edit_title())
             self._load_data(entity)
 
-    def _setup_ui(self):
-        raise NotImplementedError
-
-    def _connect_buttons(self):
-        raise NotImplementedError
-
-    def _create_title(self) -> str:
-        raise NotImplementedError
-
-    def _edit_title(self) -> str:
-        raise NotImplementedError
-
-    def _load_data(self, entity: T):
-        raise NotImplementedError
-
-    def _collect_fields(self) -> dict:
-        raise NotImplementedError
-
-    def _validate(self) -> bool:
-        raise NotImplementedError
-
-    def _add_to_db(self, fields: dict):
-        raise NotImplementedError
-
-    def _update_in_db(self, entity: T, fields: dict):
-        raise NotImplementedError
-
-    def _sync_entity(self, entity: T, fields: dict):
-        """Синхронизирует поля объекта с полями формы."""
+    def _sync_entity(self, entity: Any, fields: dict[str, Any]) -> None:
         for key, value in fields.items():
             if hasattr(entity, key):
                 setattr(entity, key, value)
-        updated_attr = "updated_by_id"
-        if hasattr(entity, updated_attr):
-            setattr(entity, updated_attr, self.current_user.id)
+        if hasattr(entity, "updated_by_id"):
+            entity.updated_by_id = self.current_user.id
 
-    def _on_save(self):
-        """Сохраняет запись — создаёт или обновляет."""
+    def _on_save(self) -> None:
         if not self._validate():
             return
 
@@ -267,18 +215,18 @@ class _BaseEntityDialog(QDialog, Generic[T], _RequiresImplementations):
         self.accept()
 
 
-class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
+class MaintenanceDialog(BaseEntityDialog):
     """Диалог создания и редактирования листа обслуживания."""
 
     not_found_error = MaintenanceNotFoundError
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         self.ui = Ui_addMaintenance_dialog()
         self.ui.setupUi(self)
         self._load_locomotives()
         self._load_types()
 
-    def _connect_buttons(self):
+    def _connect_buttons(self) -> None:
         self.ui.addMaintenance_buttonBox.accepted.connect(self._on_save)
         self.ui.addMaintenance_buttonBox.rejected.connect(self.reject)
 
@@ -288,7 +236,7 @@ class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
     def _edit_title(self) -> str:
         return "Редактирование листа обслуживания"
 
-    def _load_locomotives(self):
+    def _load_locomotives(self) -> None:
         try:
             locomotives = get_all_locomotives(self.session_factory)
         except SQLAlchemyError as e:
@@ -298,11 +246,9 @@ class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
 
         self.ui.addMaintenanceLoco_comboBox.clear()
         for loco in locomotives:
-            self.ui.addMaintenanceLoco_comboBox.addItem(
-                f"{loco.system} {loco.number}", loco.id
-            )
+            self.ui.addMaintenanceLoco_comboBox.addItem(f"{loco.system} {loco.number}", loco.id)
 
-    def _load_types(self):
+    def _load_types(self) -> None:
         try:
             types = get_all_maintenance_types(self.session_factory)
         except SQLAlchemyError as e:
@@ -311,25 +257,27 @@ class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
             types = []
 
         self.ui.addMaintenanceType_comboBox.clear()
-        for t in types:
-            self.ui.addMaintenanceType_comboBox.addItem(t.name, t.id)
+        for item in types:
+            self.ui.addMaintenanceType_comboBox.addItem(item.name, item.id)
 
-    def _load_data(self, entity: Maintenance):
-        idx = self.ui.addMaintenanceLoco_comboBox.findData(entity.locomotive_id)
-        if idx >= 0:
-            self.ui.addMaintenanceLoco_comboBox.setCurrentIndex(idx)
+    def _load_data(self, entity: Maintenance) -> None:
+        loco_index = self.ui.addMaintenanceLoco_comboBox.findData(entity.locomotive_id)
+        if loco_index >= 0:
+            self.ui.addMaintenanceLoco_comboBox.setCurrentIndex(loco_index)
 
-        type_idx = self.ui.addMaintenanceType_comboBox.findData(entity.maintenance_type_id)
-        if type_idx >= 0:
-            self.ui.addMaintenanceType_comboBox.setCurrentIndex(type_idx)
+        type_index = self.ui.addMaintenanceType_comboBox.findData(entity.maintenance_type_id)
+        if type_index >= 0:
+            self.ui.addMaintenanceType_comboBox.setCurrentIndex(type_index)
 
-        mdate = entity.maintenance_date
-        self.ui.addMaintenanceDate_dateEdit.setDate(QDate(mdate.year, mdate.month, mdate.day))
+        maintenance_date = entity.maintenance_date
+        self.ui.addMaintenanceDate_dateEdit.setDate(
+            QDate(maintenance_date.year, maintenance_date.month, maintenance_date.day)
+        )
 
         if entity.description:
             self.ui.addMaintenanceComment_textEdit.setPlainText(entity.description)
 
-    def _collect_fields(self) -> dict:
+    def _collect_fields(self) -> dict[str, Any]:
         qdate = self.ui.addMaintenanceDate_dateEdit.date()
         return {
             "locomotive_id": self.ui.addMaintenanceLoco_comboBox.currentData(),
@@ -342,12 +290,14 @@ class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
         if self.ui.addMaintenanceLoco_comboBox.currentData() is None:
             QMessageBox.warning(self, "Внимание", "Выберите локомотив")
             return False
+
         if self.ui.addMaintenanceType_comboBox.currentData() is None:
             QMessageBox.warning(self, "Внимание", "Выберите тип обслуживания")
             return False
+
         return True
 
-    def _add_to_db(self, fields: dict):
+    def _add_to_db(self, fields: dict[str, Any]) -> None:
         add_maintenance(
             self.session_factory,
             locomotive_id=fields["locomotive_id"],
@@ -357,7 +307,7 @@ class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
             created_by_id=self.current_user.id,
         )
 
-    def _update_in_db(self, entity: Maintenance, fields: dict):
+    def _update_in_db(self, entity: Maintenance, fields: dict[str, Any]) -> None:
         update_maintenance(
             self.session_factory,
             maintenance_id=entity.id,
@@ -369,17 +319,17 @@ class MaintenanceDialog(_BaseEntityDialog[Maintenance]):
         )
 
 
-class LocomotiveModelDialog(_BaseEntityDialog[LocomotiveModel]):
+class LocomotiveModelDialog(BaseEntityDialog):
     """Диалог создания и редактирования модели локомотива."""
 
     not_found_error = LocomotiveModelNotFoundError
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         self.ui = Ui_addLocomotiveModel_dialog()
         self.ui.setupUi(self)
         self.ui.filepicker.clicked.connect(self._on_pick_file)
 
-    def _connect_buttons(self):
+    def _connect_buttons(self) -> None:
         self.ui.addLocomotiveModel_buttonBox.accepted.connect(self._on_save)
         self.ui.addLocomotiveModel_buttonBox.rejected.connect(self.reject)
 
@@ -389,21 +339,20 @@ class LocomotiveModelDialog(_BaseEntityDialog[LocomotiveModel]):
     def _edit_title(self) -> str:
         return "Редактирование модели локомотива"
 
-    def _on_pick_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Выбрать изображение", "", IMAGE_FILTER
-        )
+    def _on_pick_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Выбрать изображение", "", IMAGE_FILTER)
         if path:
             self.ui.filepath.setText(path)
 
-    def _load_data(self, entity: LocomotiveModel):
+    def _load_data(self, entity: LocomotiveModel) -> None:
         self.ui.locomotiveModel_lineEdit.setText(entity.model_name)
         self.ui.manufacturer_lineEdit.setText(entity.manufacturer)
         self.ui.locomotiveCode_lineEdit.setText(entity.code)
+
         if entity.image_path:
             self.ui.filepath.setText(entity.image_path)
 
-    def _collect_fields(self) -> dict:
+    def _collect_fields(self) -> dict[str, Any]:
         return {
             "code": self.ui.locomotiveCode_lineEdit.text().strip(),
             "manufacturer": self.ui.manufacturer_lineEdit.text().strip(),
@@ -413,18 +362,22 @@ class LocomotiveModelDialog(_BaseEntityDialog[LocomotiveModel]):
 
     def _validate(self) -> bool:
         fields = self._collect_fields()
+
         if not fields["code"]:
             QMessageBox.warning(self, "Внимание", "Укажите артикул")
             return False
+
         if not fields["manufacturer"]:
             QMessageBox.warning(self, "Внимание", "Укажите производителя")
             return False
+
         if not fields["model_name"]:
             QMessageBox.warning(self, "Внимание", "Укажите название модели")
             return False
+
         return True
 
-    def _add_to_db(self, fields: dict):
+    def _add_to_db(self, fields: dict[str, Any]) -> None:
         add_locomotive_model(
             self.session_factory,
             code=fields["code"],
@@ -434,7 +387,7 @@ class LocomotiveModelDialog(_BaseEntityDialog[LocomotiveModel]):
             created_by_id=self.current_user.id,
         )
 
-    def _update_in_db(self, entity: LocomotiveModel, fields: dict):
+    def _update_in_db(self, entity: LocomotiveModel, fields: dict[str, Any]) -> None:
         update_locomotive_model(
             self.session_factory,
             model_id=entity.id,
@@ -446,17 +399,17 @@ class LocomotiveModelDialog(_BaseEntityDialog[LocomotiveModel]):
         )
 
 
-class LocomotiveDialog(_BaseEntityDialog[Locomotive]):
+class LocomotiveDialog(BaseEntityDialog):
     """Диалог создания и редактирования локомотива."""
 
     not_found_error = LocomotiveNotFoundError
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         self.ui = Ui_addLocomotive_dialog()
         self.ui.setupUi(self)
         self._load_models()
 
-    def _connect_buttons(self):
+    def _connect_buttons(self) -> None:
         self.ui.addLocomotive_buttonBox.accepted.connect(self._on_save)
         self.ui.addLocomotive_buttonBox.rejected.connect(self.reject)
 
@@ -466,7 +419,7 @@ class LocomotiveDialog(_BaseEntityDialog[Locomotive]):
     def _edit_title(self) -> str:
         return "Редактирование локомотива"
 
-    def _load_models(self):
+    def _load_models(self) -> None:
         try:
             models = get_all_locomotive_models(self.session_factory)
         except SQLAlchemyError as e:
@@ -475,29 +428,24 @@ class LocomotiveDialog(_BaseEntityDialog[Locomotive]):
             models = []
 
         self.ui.locomotiveModel_comboBox.clear()
-        for m in models:
-            self.ui.locomotiveModel_comboBox.addItem(
-                f"{m.manufacturer} {m.model_name}", m.id
-            )
+        for model in models:
+            self.ui.locomotiveModel_comboBox.addItem(f"{model.manufacturer} {model.model_name}", model.id)
 
-    def _load_data(self, entity: Locomotive):
+    def _load_data(self, entity: Locomotive) -> None:
         try:
             self.ui.system_spinBox.setValue(int(entity.system))
         except (ValueError, TypeError):
-            logger.warning(
-                "LocomotiveDialog: не удалось преобразовать system=%r в int",
-                entity.system,
-            )
+            logger.warning(f"LocomotiveDialog: не удалось преобразовать system={entity.system!r} в int")
             self.ui.system_spinBox.setValue(0)
 
         self.ui.number_lineEdit.setText(entity.number)
         self.ui.type_lineEdit.setText(entity.model_type)
 
-        idx = self.ui.locomotiveModel_comboBox.findData(entity.model_id)
-        if idx >= 0:
-            self.ui.locomotiveModel_comboBox.setCurrentIndex(idx)
+        model_index = self.ui.locomotiveModel_comboBox.findData(entity.model_id)
+        if model_index >= 0:
+            self.ui.locomotiveModel_comboBox.setCurrentIndex(model_index)
 
-    def _collect_fields(self) -> dict:
+    def _collect_fields(self) -> dict[str, Any]:
         return {
             "system": str(self.ui.system_spinBox.value()),
             "number": self.ui.number_lineEdit.text().strip(),
@@ -507,18 +455,22 @@ class LocomotiveDialog(_BaseEntityDialog[Locomotive]):
 
     def _validate(self) -> bool:
         fields = self._collect_fields()
+
         if not fields["number"]:
             QMessageBox.warning(self, "Внимание", "Укажите номер локомотива")
             return False
+
         if not fields["model_type"]:
             QMessageBox.warning(self, "Внимание", "Укажите тип локомотива")
             return False
+
         if fields["model_id"] is None:
             QMessageBox.warning(self, "Внимание", "Выберите модель")
             return False
+
         return True
 
-    def _add_to_db(self, fields: dict):
+    def _add_to_db(self, fields: dict[str, Any]) -> None:
         add_locomotive(
             self.session_factory,
             system=fields["system"],
@@ -528,7 +480,7 @@ class LocomotiveDialog(_BaseEntityDialog[Locomotive]):
             created_by_id=self.current_user.id,
         )
 
-    def _update_in_db(self, entity: Locomotive, fields: dict):
+    def _update_in_db(self, entity: Locomotive, fields: dict[str, Any]) -> None:
         update_locomotive(
             self.session_factory,
             locomotive_id=entity.id,
@@ -540,16 +492,16 @@ class LocomotiveDialog(_BaseEntityDialog[Locomotive]):
         )
 
 
-class DetailDialog(_BaseEntityDialog[Detail]):
+class DetailDialog(BaseEntityDialog):
     """Диалог создания и редактирования детали."""
 
     not_found_error = DetailNotFoundError
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         self.ui = Ui_addDetail_dialog()
         self.ui.setupUi(self)
 
-    def _connect_buttons(self):
+    def _connect_buttons(self) -> None:
         self.ui.buttonBox.accepted.connect(self._on_save)
         self.ui.buttonBox.rejected.connect(self.reject)
 
@@ -559,12 +511,12 @@ class DetailDialog(_BaseEntityDialog[Detail]):
     def _edit_title(self) -> str:
         return "Редактирование детали"
 
-    def _load_data(self, entity: Detail):
+    def _load_data(self, entity: Detail) -> None:
         self.ui.detailCode_lineEdit.setText(entity.code)
         self.ui.detailManufacturer_lineEdit.setText(entity.manufacturer)
         self.ui.detailCount_lineEdit.setText(str(entity.quantity_in_stock))
 
-    def _collect_fields(self) -> dict:
+    def _collect_fields(self) -> dict[str, Any]:
         code = self.ui.detailCode_lineEdit.text().strip()
         return {
             "code": code,
@@ -583,12 +535,14 @@ class DetailDialog(_BaseEntityDialog[Detail]):
         if not self.ui.detailCode_lineEdit.text().strip():
             QMessageBox.warning(self, "Внимание", "Укажите артикул")
             return False
+
         if not self.ui.detailManufacturer_lineEdit.text().strip():
             QMessageBox.warning(self, "Внимание", "Укажите производителя")
             return False
+
         return True
 
-    def _add_to_db(self, fields: dict):
+    def _add_to_db(self, fields: dict[str, Any]) -> None:
         add_detail(
             self.session_factory,
             code=fields["code"],
@@ -598,7 +552,7 @@ class DetailDialog(_BaseEntityDialog[Detail]):
             created_by_id=self.current_user.id,
         )
 
-    def _update_in_db(self, entity: Detail, fields: dict):
+    def _update_in_db(self, entity: Detail, fields: dict[str, Any]) -> None:
         update_detail(
             self.session_factory,
             detail_id=entity.id,
@@ -610,24 +564,18 @@ class DetailDialog(_BaseEntityDialog[Detail]):
         )
 
 
-class _BaseListTab(QWidget, Generic[T], _RequiresImplementations):
-    """Базовый класс вкладки со списком."""
-
-    _required_methods = (
-        "_fetch_items",
-        "_row_values",
-        "_open_dialog",
-        "_delete_item",
-        "_item_name",
-        "_delete_confirm_text",
-    )
-
+class BaseListTab(QWidget):
     headers: list[str] = []
     add_button_text = "Добавить"
     edit_button_text = "Изменить"
     delete_button_text = "Удалить"
 
-    def __init__(self, session_factory: sessionmaker, current_user: User, parent=None):
+    def __init__(
+        self,
+        session_factory: sessionmaker,
+        current_user: User,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.session_factory = session_factory
         self.current_user = current_user
@@ -635,40 +583,29 @@ class _BaseListTab(QWidget, Generic[T], _RequiresImplementations):
         self.ui = Ui_baseTab_widget()
         self.ui.setupUi(self)
 
-        self.ui.base_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        self.ui.base_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.ui.addBase_button.setText(self.add_button_text)
         self.ui.editBase_button.setText(self.edit_button_text)
         self.ui.deleteBase_button.setText(self.delete_button_text)
+
         self.ui.addBase_button.clicked.connect(self._on_add_clicked)
         self.ui.editBase_button.clicked.connect(self._on_edit_clicked)
         self.ui.deleteBase_button.clicked.connect(self._on_delete_clicked)
 
-        self._items: list[T] = []
+        self._items: list[Any] = []
         self.reload()
 
-    def _fetch_items(self) -> list[T]:
+    def _fetch_items(self) -> list:
         raise NotImplementedError
 
-    def _row_values(self, item: T) -> list[str]:
+    def _row_values(self, item) -> list:
         raise NotImplementedError
 
-    def _open_dialog(self, item: T | None = None) -> QDialog:
+    def _open_dialog(self) -> QDialog:
         raise NotImplementedError
 
-    def _delete_item(self, item: T):
-        raise NotImplementedError
-
-    def _item_name(self, item: T) -> str:
-        raise NotImplementedError
-
-    def _delete_confirm_text(self, item: T) -> str:
-        raise NotImplementedError
-
-    def reload(self):
+    def reload(self) -> None:
         table = self.ui.base_table
-
         try:
             self._items = self._fetch_items()
         except SQLAlchemyError as e:
@@ -684,35 +621,34 @@ class _BaseListTab(QWidget, Generic[T], _RequiresImplementations):
             for col, value in enumerate(self._row_values(item)):
                 table.setItem(row, col, QTableWidgetItem(value))
 
-    def _selected_item(self) -> T | None:
+    def _selected_item(self) -> Any | None:
         row = self.ui.base_table.currentRow()
         if row < 0 or row >= len(self._items):
             return None
         return self._items[row]
 
-    def _on_add_clicked(self):
-        dlg = self._open_dialog()
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+    def _on_add_clicked(self) -> None:
+        dialog = self._open_dialog()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
 
-    def _on_edit_clicked(self):
+    def _on_edit_clicked(self) -> None:
         item = self._selected_item()
         if item is None:
             QMessageBox.information(self, "Внимание", "Выберите запись")
             return
-        dlg = self._open_dialog(item)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        dialog = self._open_dialog(item)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
 
-    def _on_delete_clicked(self):
+    def _on_delete_clicked(self) -> None:
         item = self._selected_item()
         if item is None:
             QMessageBox.information(self, "Внимание", "Выберите запись")
             return
 
         reply = QMessageBox.question(
-            self, "Подтверждение",
-            self._delete_confirm_text(item),
+            self, "Подтверждение", self._delete_confirm_text(item),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -727,8 +663,7 @@ class _BaseListTab(QWidget, Generic[T], _RequiresImplementations):
 
         self.reload()
 
-
-class MaintenancesTab(_BaseListTab[Maintenance]):
+class MaintenancesTab(BaseListTab):
     """Вкладка «Листы обслуживания»."""
 
     headers = ["ID", "Локомотив", "Дата", "Тип", "Комментарий", "Автор"]
@@ -748,10 +683,10 @@ class MaintenancesTab(_BaseListTab[Maintenance]):
             item.created_by.login if item.created_by else "—",
         ]
 
-    def _open_dialog(self, item: Maintenance | None = None) -> MaintenanceDialog:
+    def _open_dialog(self, item: Maintenance | None = None) -> QDialog:
         return MaintenanceDialog(self.session_factory, self.current_user, item, parent=self)
 
-    def _delete_item(self, item: Maintenance):
+    def _delete_item(self, item: Maintenance) -> None:
         mark_maintenance_deleted(self.session_factory, item.id, updated_by_id=self.current_user.id)
 
     def _item_name(self, item: Maintenance) -> str:
@@ -761,12 +696,29 @@ class MaintenancesTab(_BaseListTab[Maintenance]):
         return f"Пометить на удаление лист «{self._item_name(item)}»?"
 
 
-class LocomotivesTab(_BaseListTab[Locomotive]):
+class LocomotivesTab(BaseListTab):
     """Вкладка «Локомотивы»."""
 
     headers = [
-        "ID", "Система", "Номер", "Тип", "Модель",
-        "Производитель", "Артикул", "Создан", "Изменил",
+        "ID",
+        "Система",
+        "Номер",
+        "Тип",
+        "Модель",
+        "Производитель",
+        "Артикул",
+        "Создан", # поле создан не нужно
+        "Изменил", # поле изменил не нужно
+        # Правильный порядок
+        # ID
+        # Фото (путь из базы данных)
+        # Номер (number)
+        # Система
+        # Производитель
+        # Артику (code)
+        # Модель
+        # Эта таблица формируется из двух таблиц базы данных Locomotive и LocomotiveModel
+        # TODO
     ]
 
     def _fetch_items(self) -> list[Locomotive]:
@@ -786,23 +738,20 @@ class LocomotivesTab(_BaseListTab[Locomotive]):
             item.updated_by.login if item.updated_by else "—",
         ]
 
-    def _open_dialog(self, item: Locomotive | None = None) -> LocomotiveDialog:
+    def _open_dialog(self, item: Locomotive | None = None) -> QDialog:
         return LocomotiveDialog(self.session_factory, self.current_user, item, parent=self)
 
-    def _delete_item(self, item: Locomotive):
+    def _delete_item(self, item: Locomotive) -> None:
         delete_locomotive(self.session_factory, item.id)
 
     def _item_name(self, item: Locomotive) -> str:
         return f"{item.system} {item.number}"
 
     def _delete_confirm_text(self, item: Locomotive) -> str:
-        return (
-            f"Удалить локомотив «{self._item_name(item)}»?\n"
-            f"Действие нельзя отменить."
-        )
+        return f"Удалить локомотив «{self._item_name(item)}»?\nДействие нельзя отменить."
 
 
-class DetailsTab(_BaseListTab[Detail]):
+class DetailsTab(BaseListTab):
     """Вкладка «Детали»."""
 
     headers = ["ID", "Артикул", "Производитель", "Название", "Остаток"]
@@ -819,10 +768,10 @@ class DetailsTab(_BaseListTab[Detail]):
             str(item.quantity_in_stock),
         ]
 
-    def _open_dialog(self, item: Detail | None = None) -> DetailDialog:
+    def _open_dialog(self, item: Detail | None = None) -> QDialog:
         return DetailDialog(self.session_factory, self.current_user, item, parent=self)
 
-    def _delete_item(self, item: Detail):
+    def _delete_item(self, item: Detail) -> None:
         delete_detail(self.session_factory, item.id)
 
     def _item_name(self, item: Detail) -> str:
@@ -832,113 +781,16 @@ class DetailsTab(_BaseListTab[Detail]):
         return f"Удалить деталь «{self._item_name(item)}»?\nДействие нельзя отменить."
 
 
-class MainScreen(QMainWindow):
-    """Главное окно после входа."""
-
-    logout_requested = Signal()
-
-    def __init__(self, session_factory: sessionmaker, user: User, parent=None):
-        super().__init__(parent)
-        self.session_factory = session_factory
-        self.user = user
-
-        self.ui = Ui_main_window()
-        self.ui.setupUi(self)
-
-        self._setup_menu()
-        self._apply_role_visibility()
-        self._embed_tabs()
-
-    def _setup_menu(self):
-        self.ui.user_menuItem.setText(f"{self.user.first_name} {self.user.last_name}")
-        self.ui.user_menuItem.triggered.connect(self._open_user_edit_dialog)
-        self.ui.changeUser_menuItem.triggered.connect(self.logout_requested.emit)
-        self.ui.userManagement_menuItem.triggered.connect(self._open_user_management_dialog)
-
-    def _apply_role_visibility(self):
-        if self.user.is_admin:
-            return
-        self.ui.userManagement_menuItem.setVisible(False)
-        self.ui.programmSettings_menuItem.setVisible(False)
-
-    def _embed_tabs(self):
-        self.maintenances_tab = MaintenancesTab(self.session_factory, self.user)
-        self._add_tab(self.ui.maintenances_tab, self.maintenances_tab)
-
-        self.locomotives_tab = LocomotivesTab(self.session_factory, self.user)
-        self._add_tab(self.ui.locomotives_tab, self.locomotives_tab)
-
-        self.details_tab = DetailsTab(self.session_factory, self.user)
-        self._add_tab(self.ui.details_tab, self.details_tab)
-
-    @staticmethod
-    def _add_tab(container: QWidget, widget: QWidget):
-        """Помещает виджет в layout контейнера без отступов."""
-        layout = container.layout()
-        if layout is None:
-            layout = QVBoxLayout(container)
-
-        while layout.count():
-            item = layout.takeAt(0)
-            if item is not None:
-                w = item.widget()
-                if w is not None:
-                    w.setParent(None)
-                    w.deleteLater()
-
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(widget)
-
-    def _open_user_management_dialog(self):
-        UserManagementDialog(self.session_factory, self.user, parent=self).exec()
-        self.ui.user_menuItem.setText(f"{self.user.first_name} {self.user.last_name}")
-        self._apply_role_visibility()
-
-    def _open_user_edit_dialog(self):
-        dlg = UserEditDialog(self.session_factory, self.user, parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.ui.user_menuItem.setText(f"{self.user.first_name} {self.user.last_name}")
-
-
-class ScreensStack(QStackedWidget):
-    """Стек экранов: авторизация и главное окно."""
-
-    def __init__(self, session_factory: sessionmaker, parent=None):
-        super().__init__(parent)
-        self.session_factory = session_factory
-        self.main_screen: MainScreen | None = None
-
-        self.auth_screen = AuthScreen(session_factory=self.session_factory)
-        self.addWidget(self.auth_screen)
-        self.auth_screen.auth_successful.connect(self._handle_login_success)
-        self.setCurrentWidget(self.auth_screen)
-
-    @Slot(User)
-    def _handle_login_success(self, user: User):
-        self._clear_main_screens()
-        self.main_screen = MainScreen(self.session_factory, user)
-        self.main_screen.logout_requested.connect(self._handle_logout)
-        self.addWidget(self.main_screen)
-        self.setCurrentWidget(self.main_screen)
-
-    def _handle_logout(self):
-        self._clear_main_screens()
-        self.auth_screen.reset_form()
-        self.setCurrentWidget(self.auth_screen)
-
-    def _clear_main_screens(self):
-        for i in range(self.count() - 1, 0, -1):
-            widget = self.widget(i)
-            if widget:
-                self.removeWidget(widget)
-                widget.deleteLater()
-        self.main_screen = None
-
-
 class UserEditDialog(QDialog):
     """Диалог редактирования пользователя."""
 
-    def __init__(self, session_factory: sessionmaker, user: User, admin_mode: bool = False, parent=None):
+    def __init__(
+        self,
+        session_factory: sessionmaker,
+        user: User,
+        admin_mode: bool = False,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.session_factory = session_factory
         self.user = user
@@ -956,14 +808,14 @@ class UserEditDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self._on_save)
         self.ui.buttonBox.rejected.connect(self.reject)
 
-    def _load_user_data(self):
+    def _load_user_data(self) -> None:
         self.ui.login_lineEdit.setText(self.user.login)
         self.ui.firstName_lineEdit.setText(self.user.first_name or "")
         self.ui.lastName_lineEdit.setText(self.user.last_name or "")
         self.ui.isAdmin_checkBox.setChecked(bool(self.user.is_admin))
         self.ui.disabled_checkBox.setChecked(not self.user.is_active)
 
-    def _on_save(self):
+    def _on_save(self) -> None:
         """Сохраняет изменения пользователя одной атомарной операцией."""
         login = self.ui.login_lineEdit.text().strip().lower()
         first_name = self.ui.firstName_lineEdit.text().strip()
@@ -983,7 +835,6 @@ class UserEditDialog(QDialog):
         is_admin = self.ui.isAdmin_checkBox.isChecked()
         is_active = not self.ui.disabled_checkBox.isChecked()
 
-        # Предварительная проверка для понятного UX
         if self.admin_mode and self.user.is_admin and self.user.is_active:
             if not ensure_not_last_active_admin(
                 self.session_factory,
@@ -995,7 +846,6 @@ class UserEditDialog(QDialog):
                 return
 
         try:
-            # Передаем аргументы явно, чтобы избежать проблем с типизацией словаря
             update_user_full(
                 self.session_factory,
                 self.user.id,
@@ -1023,16 +873,18 @@ class UserEditDialog(QDialog):
         self.user.login = login
         self.user.first_name = first_name
         self.user.last_name = last_name
+
         if self.admin_mode:
             self.user.is_admin = is_admin
             self.user.is_active = is_active
 
         self.accept()
 
+
 class UserCreateDialog(QDialog):
     """Диалог создания нового пользователя."""
 
-    def __init__(self, session_factory: sessionmaker, parent=None):
+    def __init__(self, session_factory: sessionmaker, parent: QWidget | None = None):
         super().__init__(parent)
         self.session_factory = session_factory
 
@@ -1046,7 +898,8 @@ class UserCreateDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self._on_save)
         self.ui.buttonBox.rejected.connect(self.reject)
 
-    def _on_save(self):
+    def _on_save(self) -> None:
+        """Создаёт нового пользователя."""
         login = self.ui.login_lineEdit.text().strip().lower()
         first_name = self.ui.firstName_lineEdit.text().strip()
         last_name = self.ui.lastName_lineEdit.text().strip()
@@ -1058,9 +911,11 @@ class UserCreateDialog(QDialog):
         if not login:
             QMessageBox.warning(self, "Внимание", "Логин не может быть пустым")
             return
+
         if not password:
             QMessageBox.warning(self, "Внимание", "Пароль не может быть пустым")
             return
+
         if password != password_confirm:
             QMessageBox.warning(self, "Внимание", "Пароли не совпадают")
             return
@@ -1089,7 +944,12 @@ class UserCreateDialog(QDialog):
 class UserManagementDialog(QDialog):
     """Окно со списком пользователей."""
 
-    def __init__(self, session_factory: sessionmaker, current_user: User, parent=None):
+    def __init__(
+        self,
+        session_factory: sessionmaker,
+        current_user: User,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.session_factory = session_factory
         self.current_user = current_user
@@ -1110,7 +970,7 @@ class UserManagementDialog(QDialog):
         self._users: list[User] = []
         self._load_users_table()
 
-    def _load_users_table(self):
+    def _load_users_table(self) -> None:
         table = self.ui.users_tableWidget
 
         try:
@@ -1144,22 +1004,22 @@ class UserManagementDialog(QDialog):
             return None
         return self._users[row]
 
-    def _on_add_clicked(self):
-        dlg = UserCreateDialog(self.session_factory, parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+    def _on_add_clicked(self) -> None:
+        dialog = UserCreateDialog(self.session_factory, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self._load_users_table()
 
-    def _on_edit_clicked(self):
+    def _on_edit_clicked(self) -> None:
         user = self._selected_user()
         if user is None:
             QMessageBox.information(self, "Внимание", "Выберите пользователя")
             return
 
-        dlg = UserEditDialog(self.session_factory, user, admin_mode=True, parent=self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        dialog = UserEditDialog(self.session_factory, user, admin_mode=True, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self._load_users_table()
 
-    def _on_delete_clicked(self):
+    def _on_delete_clicked(self) -> None:
         user = self._selected_user()
         if user is None:
             QMessageBox.information(self, "Внимание", "Выберите пользователя")
@@ -1180,7 +1040,8 @@ class UserManagementDialog(QDialog):
                 return
 
         reply = QMessageBox.question(
-            self, "Подтверждение",
+            self,
+            "Подтверждение",
             f"Удалить пользователя «{user.login}»?\nДействие нельзя отменить.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -1196,3 +1057,113 @@ class UserManagementDialog(QDialog):
             QMessageBox.critical(self, "Ошибка БД", f"Не удалось удалить пользователя:\n{e}")
 
         self._load_users_table()
+
+
+class MainScreen(QMainWindow):
+    """Главное окно после входа."""
+
+    logout_requested = Signal()
+
+    def __init__(
+        self,
+        session_factory: sessionmaker,
+        user: User,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.session_factory = session_factory
+        self.user = user
+
+        self.ui = Ui_main_window()
+        self.ui.setupUi(self)
+
+        self._setup_menu()
+        self._apply_role_visibility()
+        self._embed_tabs()
+
+    def _setup_menu(self) -> None:
+        self.ui.user_menuItem.setText(f"{self.user.first_name} {self.user.last_name}")
+        self.ui.user_menuItem.triggered.connect(self._open_user_edit_dialog)
+        self.ui.changeUser_menuItem.triggered.connect(self.logout_requested.emit)
+        self.ui.userManagement_menuItem.triggered.connect(self._open_user_management_dialog)
+
+    def _apply_role_visibility(self) -> None:
+        if self.user.is_admin:
+            return
+
+        self.ui.userManagement_menuItem.setVisible(False)
+        self.ui.programmSettings_menuItem.setVisible(False)
+
+    def _embed_tabs(self) -> None:
+        self.maintenances_tab = MaintenancesTab(self.session_factory, self.user)
+        self._add_tab(self.ui.maintenances_tab, self.maintenances_tab)
+
+        self.locomotives_tab = LocomotivesTab(self.session_factory, self.user)
+        self._add_tab(self.ui.locomotives_tab, self.locomotives_tab)
+
+        self.details_tab = DetailsTab(self.session_factory, self.user)
+        self._add_tab(self.ui.details_tab, self.details_tab)
+
+    @staticmethod
+    def _add_tab(container: QWidget, widget: QWidget) -> None:
+        """Помещает виджет в layout контейнера без отступов."""
+        layout = container.layout()
+        if layout is None:
+            layout = QVBoxLayout(container)
+
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is not None:
+                child = item.widget()
+                if child is not None:
+                    child.setParent(None)
+                    child.deleteLater()
+
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(widget)
+
+    def _open_user_management_dialog(self) -> None:
+        UserManagementDialog(self.session_factory, self.user, parent=self).exec()
+        self.ui.user_menuItem.setText(f"{self.user.first_name} {self.user.last_name}")
+        self._apply_role_visibility()
+
+    def _open_user_edit_dialog(self) -> None:
+        dialog = UserEditDialog(self.session_factory, self.user, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.ui.user_menuItem.setText(f"{self.user.first_name} {self.user.last_name}")
+
+
+class ScreensStack(QStackedWidget):
+    """Стек экранов: авторизация и главное окно."""
+
+    def __init__(self, session_factory: sessionmaker, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.session_factory = session_factory
+        self.main_screen: MainScreen | None = None
+
+        self.auth_screen = AuthScreen(session_factory=self.session_factory)
+        self.addWidget(self.auth_screen)
+        self.auth_screen.auth_successful.connect(self._handle_login_success)
+        self.setCurrentWidget(self.auth_screen)
+
+    @Slot(User)
+    def _handle_login_success(self, user: User) -> None:
+        self._clear_main_screens()
+        self.main_screen = MainScreen(self.session_factory, user)
+        self.main_screen.logout_requested.connect(self._handle_logout)
+        self.addWidget(self.main_screen)
+        self.setCurrentWidget(self.main_screen)
+
+    def _handle_logout(self) -> None:
+        self._clear_main_screens()
+        self.auth_screen.reset_form()
+        self.setCurrentWidget(self.auth_screen)
+
+    def _clear_main_screens(self) -> None:
+        for index in range(self.count() - 1, 0, -1):
+            widget = self.widget(index)
+            if widget:
+                self.removeWidget(widget)
+                widget.deleteLater()
+
+        self.main_screen = None
