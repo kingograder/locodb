@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
+
 from app.db.base import Base
 
 
@@ -64,14 +65,14 @@ class LocomotiveModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[int]
     name: Mapped[str] = mapped_column(LowercaseString(255))
-    image_path: Mapped[str | None] = mapped_column(String(255) ,unique=True)
+    image_path: Mapped[str | None] = mapped_column(String(255), unique=True)
     manufacturer: Mapped["Manufacturer"] = relationship(back_populates="locomotive_models")
     locomotives: Mapped[list["Locomotive"]] = relationship(back_populates="model")
     details: Mapped[list["LocomotiveModelDetail"]] = relationship(back_populates="locomotive_model")
 
     manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturers.id"))
 
-    __table_args__ = (UniqueConstraint("code", "manufacturer_id"))
+    __table_args__ = (UniqueConstraint("code", "manufacturer_id"),)
 
 class Detail(Base):
     """Детали"""
@@ -86,7 +87,7 @@ class Detail(Base):
 
     manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturers.id"))
 
-    __table_args__ = (UniqueConstraint("code", "manufacturer_id"))
+    __table_args__ = (UniqueConstraint("code", "manufacturer_id"),)
 
 
 class Manufacturer(Base):
@@ -98,7 +99,7 @@ class Manufacturer(Base):
     details: Mapped[list["Detail"]] = relationship(back_populates="manufacturer")
 
 
-class User(Base):
+class User(Base, TimestampMixin):
     """Пользователи"""
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -112,7 +113,7 @@ class User(Base):
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="user")
 
 
-class Maintenance(Base):
+class Maintenance(Base, TimestampMixin):
     """Листы обслуживания"""
     __tablename__ = "maintenances"
     id: Mapped[int] = mapped_column(primary_key=True)
