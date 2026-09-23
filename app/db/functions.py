@@ -350,7 +350,7 @@ def get_all_locomotive_models(session_factory: sessionmaker) -> list[LocomotiveM
     with session_factory() as session:
         return list(session.scalars(
             select(LocomotiveModel)
-            .order_by(LocomotiveModel.manufacturer, LocomotiveModel.model_name)
+            .order_by(LocomotiveModel.manufacturer, LocomotiveModel.name)
         ).all())
 
 
