@@ -1,48 +1,62 @@
 import logging
-from datetime import datetime
+
 from sqlalchemy import select, func
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload, sessionmaker
+from sqlalchemy.orm import joinedload, sessionmaker, contains_eager
 from app.autorization import check_password, hash_password
 from app.db.base import Base
 from app.db.models import (
-    User, Maintenance, MaintenanceType, Locomotive, LocomotiveModel, Detail,
+    User,
+    Maintenance,
+    MaintenanceType,
+    Locomotive,
+    LocomotiveModel,
+    Detail,
+    Manufacturer,
+    MaintenanceDetail,
+    LocomotiveModelDetail,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class UserNotFoundError(Exception):
-    """Пользователь с указанным ID не найден."""
-    pass
+class EntityInUseError(Exception):
+    """Сущность используется в других записях и не может быть удалена."""
 
 class LoginAlreadyTakenError(Exception):
     """Логин уже занят другим пользователем."""
-    pass
+
 
 class LastActiveAdminError(Exception):
     """Попытка убрать последнего активного администратора."""
-    pass
+
+
+class UserNotFoundError(Exception):
+    """Пользователь с указанным ID не найден."""
+
 
 class LocomotiveNotFoundError(Exception):
     """Локомотив с указанным ID не найден."""
-    pass
+
 
 class LocomotiveModelNotFoundError(Exception):
     """Модель локомотива с указанным ID не найдена."""
-    pass
+
 
 class DetailNotFoundError(Exception):
     """Деталь с указанным ID не найдена."""
-    pass
+
 
 class MaintenanceNotFoundError(Exception):
     """Лист обслуживания с указанным ID не найден."""
-    pass
+
 
 class MaintenanceTypeNotFoundError(Exception):
     """Тип обслуживания с указанным ID не найден."""
-    pass
+
+
+class ManufacturerNotFoundError(Exception):
+    """Производитель с указанным ID не найден."""
 
 
 def _update_entity(session_factory, model_class, entity_id: int, not_found_error, **fields) -> None:
@@ -52,7 +66,6 @@ def _update_entity(session_factory, model_class, entity_id: int, not_found_error
         if entity is None:
             raise not_found_error(entity_id)
 
-        # Применяем переданные поля
         for field, value in fields.items():
             setattr(entity, field, value)
 
@@ -83,6 +96,8 @@ def _delete_entity(session_factory, model_class, entity_id: int, not_found_error
 
         logger.info(f"Удалён {model_class.__name__} ID {entity_id}")
 
+
+# ------------------------- User -------------------------
 
 def get_user(session_factory: sessionmaker, login: str) -> User | None:
     """Возвращает пользователя по логину или None."""
@@ -192,7 +207,6 @@ def update_user_full(
         if user is None:
             raise UserNotFoundError(user_id)
 
-        # 1. Проверка уникальности логина (если он меняется)
         new_login = login.strip().lower() if login else None
         if new_login and new_login != user.login:
             existing = session.scalar(
@@ -201,14 +215,12 @@ def update_user_full(
             if existing is not None:
                 raise LoginAlreadyTakenError(new_login)
 
-        # 2. Проверка "последнего активного админа"
         will_be_admin = is_admin if is_admin is not None else user.is_admin
         will_be_active = is_active if is_active is not None else user.is_active
 
         if user.is_admin and user.is_active and not (will_be_admin and will_be_active):
             assert_not_last_admin(session_factory, user_id)
 
-        # 3. Применение изменений
         if new_login:
             user.login = new_login
         if first_name is not None:
@@ -287,9 +299,100 @@ def update_user_password(session_factory: sessionmaker, user_id: int, password: 
 
 
 def delete_user(session_factory: sessionmaker, user_id: int) -> None:
-    """Удаляет пользователя."""
-    _delete_entity(session_factory, User, user_id, UserNotFoundError)
+    """Удаляет пользователя, если он не автор листов обслуживания."""
+    with session_factory() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            raise UserNotFoundError(user_id)
 
+        count = session.scalar(
+            select(func.count())
+            .select_from(Maintenance)
+            .where(Maintenance.user_id == user_id)
+        )
+        if count:
+            raise EntityInUseError(
+                f"Нельзя удалить пользователя: у него {count} листов обслуживания"
+            )
+
+        session.delete(user)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при удалении User ID {user_id}")
+            raise
+
+        logger.info(f"Удалён User ID {user_id}")
+
+
+# ------------------------- Manufacturer -------------------------
+
+def get_all_manufacturers(session_factory: sessionmaker) -> list[Manufacturer]:
+    """Возвращает список всех производителей."""
+    with session_factory() as session:
+        return list(session.scalars(
+            select(Manufacturer).order_by(Manufacturer.name)
+        ).all())
+
+
+def add_manufacturer(session_factory: sessionmaker, name: str) -> None:
+    """Создаёт нового производителя."""
+    with session_factory() as session:
+        manufacturer = Manufacturer(name=name.strip())
+        session.add(manufacturer)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при создании производителя {name}")
+            raise
+
+        logger.info(f"Создан производитель ID {manufacturer.id}")
+
+
+def update_manufacturer(session_factory: sessionmaker, manufacturer_id: int, name: str) -> None:
+    """Обновляет производителя."""
+    _update_entity(
+        session_factory, Manufacturer, manufacturer_id, ManufacturerNotFoundError,
+        name=name.strip(),
+    )
+
+
+def delete_manufacturer(session_factory: sessionmaker, manufacturer_id: int) -> None:
+    """Удаляет производителя, если он не используется."""
+    with session_factory() as session:
+        manufacturer = session.get(Manufacturer, manufacturer_id)
+        if manufacturer is None:
+            raise ManufacturerNotFoundError(manufacturer_id)
+
+        models_count = session.scalar(
+            select(func.count())
+            .select_from(LocomotiveModel)
+            .where(LocomotiveModel.manufacturer_id == manufacturer_id)
+        )
+        details_count = session.scalar(
+            select(func.count())
+            .select_from(Detail)
+            .where(Detail.manufacturer_id == manufacturer_id)
+        )
+        if models_count or details_count:
+            raise EntityInUseError(
+                f"Нельзя удалить производителя: моделей — {models_count}, деталей — {details_count}"
+            )
+
+        session.delete(manufacturer)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при удалении Manufacturer ID {manufacturer_id}")
+            raise
+
+        logger.info(f"Удалён Manufacturer ID {manufacturer_id}")
+
+
+# ------------------------- MaintenanceType -------------------------
 
 def get_all_maintenance_types(session_factory: sessionmaker) -> list[MaintenanceType]:
     """Возвращает список всех типов обслуживания."""
@@ -299,20 +402,10 @@ def get_all_maintenance_types(session_factory: sessionmaker) -> list[Maintenance
         ).all())
 
 
-def add_maintenance_type(
-    session_factory: sessionmaker,
-    name: str,
-    description: str | None,
-    created_by_id: int,
-) -> None:
+def add_maintenance_type(session_factory: sessionmaker, name: str) -> None:
     """Создаёт новый тип обслуживания."""
     with session_factory() as session:
-        new_type = MaintenanceType(
-            name=name.strip(),
-            description=description,
-            created_by_id=created_by_id,
-            updated_by_id=created_by_id,
-        )
+        new_type = MaintenanceType(name=name.strip())
         session.add(new_type)
         try:
             session.commit()
@@ -328,49 +421,69 @@ def update_maintenance_type(
     session_factory: sessionmaker,
     type_id: int,
     name: str,
-    description: str | None,
-    updated_by_id: int,
 ) -> None:
     """Обновляет существующий тип обслуживания."""
     _update_entity(
         session_factory, MaintenanceType, type_id, MaintenanceTypeNotFoundError,
         name=name.strip(),
-        description=description,
-        updated_by_id=updated_by_id,
     )
 
 
 def delete_maintenance_type(session_factory: sessionmaker, type_id: int) -> None:
-    """Удаляет тип обслуживания."""
-    _delete_entity(session_factory, MaintenanceType, type_id, MaintenanceTypeNotFoundError)
+    """Удаляет тип обслуживания, если он не используется."""
+    with session_factory() as session:
+        mtype = session.get(MaintenanceType, type_id)
+        if mtype is None:
+            raise MaintenanceTypeNotFoundError(type_id)
 
+        count = session.scalar(
+            select(func.count())
+            .select_from(Maintenance)
+            .where(Maintenance.maintenance_type_id == type_id)
+        )
+        if count:
+            raise EntityInUseError(
+                f"Нельзя удалить тип: к нему привязано листов обслуживания — {count}"
+            )
+
+        session.delete(mtype)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при удалении MaintenanceType ID {type_id}")
+            raise
+
+        logger.info(f"Удалён MaintenanceType ID {type_id}")
+
+
+# ------------------------- LocomotiveModel -------------------------
 
 def get_all_locomotive_models(session_factory: sessionmaker) -> list[LocomotiveModel]:
-    """Возвращает список всех моделей локомотивов."""
+    """Возвращает список всех моделей локомотивов с подгруженным производителем."""
     with session_factory() as session:
         return list(session.scalars(
             select(LocomotiveModel)
-            .order_by(LocomotiveModel.manufacturer, LocomotiveModel.name)
+            .join(LocomotiveModel.manufacturer)
+            .options(contains_eager(LocomotiveModel.manufacturer))
+            .order_by(Manufacturer.name, LocomotiveModel.name)
         ).all())
 
 
 def add_locomotive_model(
     session_factory: sessionmaker,
-    code: str,
-    manufacturer: str,
-    model_name: str,
+    code: int,
+    manufacturer_id: int,
+    name: str,
     image_path: str | None,
-    created_by_id: int,
 ) -> None:
     """Создаёт новую модель локомотива."""
     with session_factory() as session:
         model = LocomotiveModel(
             code=code,
-            manufacturer=manufacturer,
-            model_name=model_name,
+            manufacturer_id=manufacturer_id,
+            name=name.strip(),
             image_path=image_path,
-            created_by_id=created_by_id,
-            updated_by_id=created_by_id,
         )
         session.add(model)
         try:
@@ -382,26 +495,64 @@ def add_locomotive_model(
 
         logger.info(f"Создана модель локомотива ID {model.id}")
 
+def delete_locomotive_model(session_factory: sessionmaker, model_id: int) -> None:
+    """Удаляет модель локомотива, если она не используется."""
+    with session_factory() as session:
+        model = session.get(LocomotiveModel, model_id)
+        if model is None:
+            raise LocomotiveModelNotFoundError(model_id)
+
+        # Проверяем, есть ли привязанные локомотивы
+        loco_count = session.scalar(
+            select(func.count())
+            .select_from(Locomotive)
+            .where(Locomotive.locomotive_model_id == model_id)
+        )
+        if loco_count:
+            raise EntityInUseError(
+                f"Нельзя удалить модель: к ней привязано локомотивов — {loco_count}"
+            )
+
+        # Проверяем связи модель-деталь
+        detail_link_count = session.scalar(
+            select(func.count())
+            .select_from(LocomotiveModelDetail)
+            .where(LocomotiveModelDetail.locomotive_model_id == model_id)
+        )
+        if detail_link_count:
+            raise EntityInUseError(
+                f"Нельзя удалить модель: с ней связано деталей — {detail_link_count}"
+            )
+
+        session.delete(model)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при удалении LocomotiveModel ID {model_id}")
+            raise
+
+        logger.info(f"Удалён LocomotiveModel ID {model_id}")
 
 def update_locomotive_model(
     session_factory: sessionmaker,
     model_id: int,
-    code: str,
-    manufacturer: str,
-    model_name: str,
+    code: int,
+    manufacturer_id: int,
+    name: str,
     image_path: str | None,
-    updated_by_id: int,
 ) -> None:
     """Обновляет существующую модель локомотива."""
     _update_entity(
         session_factory, LocomotiveModel, model_id, LocomotiveModelNotFoundError,
         code=code,
-        manufacturer=manufacturer,
-        model_name=model_name,
+        manufacturer_id=manufacturer_id,
+        name=name.strip(),
         image_path=image_path,
-        updated_by_id=updated_by_id,
     )
 
+
+# ------------------------- Locomotive -------------------------
 
 def get_all_locomotives(session_factory: sessionmaker) -> list[Locomotive]:
     """Возвращает список всех локомотивов с подгруженными связями."""
@@ -409,9 +560,7 @@ def get_all_locomotives(session_factory: sessionmaker) -> list[Locomotive]:
         return list(session.scalars(
             select(Locomotive)
             .options(
-                joinedload(Locomotive.model),
-                joinedload(Locomotive.created_by),
-                joinedload(Locomotive.updated_by),
+                joinedload(Locomotive.model).joinedload(LocomotiveModel.manufacturer),
             )
             .order_by(Locomotive.system, Locomotive.number)
         ).all())
@@ -419,21 +568,16 @@ def get_all_locomotives(session_factory: sessionmaker) -> list[Locomotive]:
 
 def add_locomotive(
     session_factory: sessionmaker,
-    system: str,
-    number: str,
-    model_type: str,
-    model_id: int,
-    created_by_id: int,
+    system: int,
+    number: int,
+    locomotive_model_id: int,
 ) -> None:
     """Создаёт новый локомотив."""
     with session_factory() as session:
         locomotive = Locomotive(
             system=system,
             number=number,
-            model_type=model_type,
-            model_id=model_id,
-            created_by_id=created_by_id,
-            updated_by_id=created_by_id,
+            locomotive_model_id=locomotive_model_id,
         )
         session.add(locomotive)
         try:
@@ -449,51 +593,74 @@ def add_locomotive(
 def update_locomotive(
     session_factory: sessionmaker,
     locomotive_id: int,
-    system: str,
-    number: str,
-    model_type: str,
-    model_id: int,
-    updated_by_id: int,
+    system: int,
+    number: int,
+    locomotive_model_id: int,
 ) -> None:
     """Обновляет существующий локомотив."""
     _update_entity(
         session_factory, Locomotive, locomotive_id, LocomotiveNotFoundError,
         system=system,
         number=number,
-        model_type=model_type,
-        model_id=model_id,
-        updated_by_id=updated_by_id,
+        locomotive_model_id=locomotive_model_id,
     )
 
 
 def delete_locomotive(session_factory: sessionmaker, locomotive_id: int) -> None:
-    """Удаляет локомотив."""
-    _delete_entity(session_factory, Locomotive, locomotive_id, LocomotiveNotFoundError)
+    """Удаляет локомотив, если он не используется в обслуживании."""
+    with session_factory() as session:
+        locomotive = session.get(Locomotive, locomotive_id)
+        if locomotive is None:
+            raise LocomotiveNotFoundError(locomotive_id)
 
+        maint_count = session.scalar(
+            select(func.count())
+            .select_from(Maintenance)
+            .where(Maintenance.locomotive_id == locomotive_id)
+        )
+        if maint_count:
+            raise EntityInUseError(
+                f"Нельзя удалить локомотив: к нему привязано листов обслуживания — {maint_count}"
+            )
+
+        session.delete(locomotive)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при удалении Locomotive ID {locomotive_id}")
+            raise
+
+        logger.info(f"Удалён Locomotive ID {locomotive_id}")
+
+
+# ------------------------- Detail -------------------------
 
 def get_all_details(session_factory: sessionmaker) -> list[Detail]:
-    """Возвращает список всех деталей."""
+    """Возвращает список всех деталей с подгруженным производителем."""
     with session_factory() as session:
-        return list(session.scalars(select(Detail).order_by(Detail.name)).all())
+        return list(session.scalars(
+            select(Detail)
+            .join(Detail.manufacturer)
+            .options(contains_eager(Detail.manufacturer))
+            .order_by(Detail.name)
+        ).all())
 
 
 def add_detail(
     session_factory: sessionmaker,
-    code: str,
-    manufacturer: str,
+    code: int,
+    manufacturer_id: int,
     name: str,
     quantity_in_stock: int,
-    created_by_id: int,
 ) -> None:
     """Создаёт новую деталь."""
     with session_factory() as session:
         detail = Detail(
             code=code,
-            manufacturer=manufacturer,
-            name=name,
+            manufacturer_id=manufacturer_id,
+            name=name.strip(),
             quantity_in_stock=quantity_in_stock,
-            created_by_id=created_by_id,
-            updated_by_id=created_by_id,
         )
         session.add(detail)
         try:
@@ -509,40 +676,71 @@ def add_detail(
 def update_detail(
     session_factory: sessionmaker,
     detail_id: int,
-    code: str,
-    manufacturer: str,
+    code: int,
+    manufacturer_id: int,
     name: str,
     quantity_in_stock: int,
-    updated_by_id: int,
 ) -> None:
     """Обновляет существующую деталь."""
     _update_entity(
         session_factory, Detail, detail_id, DetailNotFoundError,
         code=code,
-        manufacturer=manufacturer,
-        name=name,
+        manufacturer_id=manufacturer_id,
+        name=name.strip(),
         quantity_in_stock=quantity_in_stock,
-        updated_by_id=updated_by_id,
     )
 
 
 def delete_detail(session_factory: sessionmaker, detail_id: int) -> None:
-    """Удаляет деталь."""
-    _delete_entity(session_factory, Detail, detail_id, DetailNotFoundError)
+    """Удаляет деталь, если она не используется."""
+    with session_factory() as session:
+        detail = session.get(Detail, detail_id)
+        if detail is None:
+            raise DetailNotFoundError(detail_id)
 
+        model_links = session.scalar(
+            select(func.count())
+            .select_from(LocomotiveModelDetail)
+            .where(LocomotiveModelDetail.detail_id == detail_id)
+        )
+        maint_links = session.scalar(
+            select(func.count())
+            .select_from(MaintenanceDetail)
+            .where(MaintenanceDetail.detail_id == detail_id)
+        )
+        if model_links or maint_links:
+            raise EntityInUseError(
+                f"Нельзя удалить деталь: связана с моделями — {model_links}, "
+                f"с обслуживанием — {maint_links}"
+            )
+
+        session.delete(detail)
+        try:
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception(f"Ошибка БД при удалении Detail ID {detail_id}")
+            raise
+
+        logger.info(f"Удалён Detail ID {detail_id}")
+
+
+# ------------------------- Maintenance -------------------------
 
 def get_all_maintenances(session_factory: sessionmaker) -> list[Maintenance]:
-    """Возвращает список всех активных листов обслуживания."""
+    """Возвращает список всех активных листов обслуживания со связями."""
     with session_factory() as session:
         return list(session.scalars(
             select(Maintenance)
             .options(
-                joinedload(Maintenance.locomotive),
+                joinedload(Maintenance.locomotive)
+                    .joinedload(Locomotive.model)
+                    .joinedload(LocomotiveModel.manufacturer),
                 joinedload(Maintenance.maintenance_type),
-                joinedload(Maintenance.created_by),
+                joinedload(Maintenance.user),
             )
             .where(Maintenance.is_deleted.is_(False))
-            .order_by(Maintenance.maintenance_date.desc())
+            .order_by(Maintenance.created_at.desc())
         ).all())
 
 
@@ -550,19 +748,16 @@ def add_maintenance(
     session_factory: sessionmaker,
     locomotive_id: int,
     maintenance_type_id: int,
-    maintenance_date: datetime,
-    description: str | None,
-    created_by_id: int,
+    description: str,
+    user_id: int,
 ) -> None:
     """Создаёт новую запись об обслуживании."""
     with session_factory() as session:
         maintenance = Maintenance(
             locomotive_id=locomotive_id,
             maintenance_type_id=maintenance_type_id,
-            maintenance_date=maintenance_date,
             description=description,
-            created_by_id=created_by_id,
-            updated_by_id=created_by_id,
+            user_id=user_id,
         )
         session.add(maintenance)
         try:
@@ -580,33 +775,29 @@ def update_maintenance(
     maintenance_id: int,
     locomotive_id: int,
     maintenance_type_id: int,
-    maintenance_date: datetime,
-    description: str | None,
-    updated_by_id: int,
+    description: str,
 ) -> None:
     """Обновляет существующую запись об обслуживании."""
     _update_entity(
         session_factory, Maintenance, maintenance_id, MaintenanceNotFoundError,
         locomotive_id=locomotive_id,
         maintenance_type_id=maintenance_type_id,
-        maintenance_date=maintenance_date,
         description=description,
-        updated_by_id=updated_by_id,
     )
 
 
 def mark_maintenance_deleted(
     session_factory: sessionmaker,
     maintenance_id: int,
-    updated_by_id: int,
 ) -> None:
     """Помечает лист обслуживания как удалённый."""
     _update_entity(
         session_factory, Maintenance, maintenance_id, MaintenanceNotFoundError,
         is_deleted=True,
-        updated_by_id=updated_by_id,
     )
 
+
+# ------------------------- DB init -------------------------
 
 def drop_tables(engine):
     """Удаляет все таблицы. Осторожно: данные пропадут."""
