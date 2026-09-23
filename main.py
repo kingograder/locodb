@@ -36,7 +36,7 @@ def setup_logging():
     )
 
 if __name__ == "__main__":
-    create_directories([Path("./data"), Path("./data/logs")])
+    create_directories([Path("./data"), Path("./data/logs"), Path("./data/images")])
     setup_logging()
     init_db(engine, session_factory)
     app = QApplication(sys.argv)
