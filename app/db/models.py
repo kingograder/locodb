@@ -3,7 +3,6 @@ from datetime import datetime, UTC
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
-
 from app.db.base import Base
 
 
@@ -21,17 +20,28 @@ class TimestampMixin:
     )
 
 
-class LowercaseString(TypeDecorator):
+
+
+
+class LowercaseInputString(TypeDecorator):
     impl = String
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        if isinstance(value, str):
-            return value.lower()
-        return value
+        if not isinstance(value, str):
+            raise TypeError(
+                f"Expected str, got {type(value).__name__}"
+            )
+        return value.lower()
 
+
+class LowercaseInputCapitalizeOutputString(LowercaseInputString):
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return value.capitalize()
 
 class LocomotiveModelDetail(Base):
     """Связь Модель - Деталь"""
@@ -62,7 +72,7 @@ class LocomotiveModel(Base):
     __tablename__ = "locomotive_models"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[int]
-    name: Mapped[str] = mapped_column(LowercaseString(255))
+    name: Mapped[str] = mapped_column(LowercaseInputString(255))
     image_path: Mapped[str | None] = mapped_column(String(255), unique=True)
     manufacturer: Mapped["Manufacturer"] = relationship(back_populates="locomotive_models")
     locomotives: Mapped[list["Locomotive"]] = relationship(back_populates="model")
@@ -77,7 +87,7 @@ class Detail(Base):
     __tablename__ = "details"
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[int]
-    name: Mapped[str] = mapped_column(LowercaseString(255))
+    name: Mapped[str] = mapped_column(LowercaseInputString(255))
     quantity_in_stock: Mapped[int]
     manufacturer: Mapped["Manufacturer"] = relationship(back_populates="details")
     locomotive_models: Mapped[list["LocomotiveModelDetail"]] = relationship(back_populates="detail")
@@ -92,7 +102,7 @@ class Manufacturer(Base):
     """Производитель"""
     __tablename__ = "manufacturers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(LowercaseString(255), unique=True)
+    name: Mapped[str] = mapped_column(LowercaseInputString(255), unique=True)
     locomotive_models: Mapped[list["LocomotiveModel"]] = relationship(back_populates="manufacturer")
     details: Mapped[list["Detail"]] = relationship(back_populates="manufacturer")
 
@@ -104,8 +114,8 @@ class User(Base, TimestampMixin):
     login: Mapped[str] = mapped_column(String(32), unique=True)
     password_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     password_salt: Mapped[str] = mapped_column(String(32), nullable=False)
-    first_name: Mapped[str | None] = mapped_column(LowercaseString(50), nullable=True)
-    last_name: Mapped[str | None] = mapped_column(LowercaseString(50), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(LowercaseInputString(50), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(LowercaseInputString(50), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="user")
@@ -143,5 +153,5 @@ class MaintenanceType(Base):
     """Тип обслуживания"""
     __tablename__ = "maintenance_types"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(LowercaseString(255))
+    name: Mapped[str] = mapped_column(LowercaseInputString(255))
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="maintenance_type")
