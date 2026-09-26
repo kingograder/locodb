@@ -7,20 +7,15 @@ from sqlalchemy.types import TypeDecorator
 from app.db.base import Base
 
 
-def now() -> datetime:
-    """Возвращает текущее локальное время с часовым поясом."""
-    return datetime.now().astimezone()
-
-
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=now,
+        default=datetime.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=now,
-        onupdate=now,
+        default=datetime.now(),
+        onupdate=datetime.now(),
     )
 
 
@@ -34,6 +29,7 @@ class LowercaseString(TypeDecorator):
         if isinstance(value, str):
             return value.lower()
         return value
+
 
 class LocomotiveModelDetail(Base):
     """Связь Модель - Деталь"""
