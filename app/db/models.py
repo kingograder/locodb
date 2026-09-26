@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -10,12 +10,14 @@ from app.db.base import Base
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.now(),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.now(),
-        onupdate=datetime.now(),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
 
