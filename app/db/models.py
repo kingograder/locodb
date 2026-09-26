@@ -24,6 +24,7 @@ class TimestampMixin:
 
 
 class LowercaseInputString(TypeDecorator):
+    """Переводит все символы в нижний регистр перед записью в БД"""
     impl = String
     cache_ok = True
 
@@ -38,6 +39,7 @@ class LowercaseInputString(TypeDecorator):
 
 
 class LowercaseInputCapitalizeOutputString(LowercaseInputString):
+    """Возвращает значение с заглавной буквой для названий и имен"""
     def process_result_value(self, value, dialect):
         if value is None:
             return None
@@ -102,7 +104,7 @@ class Manufacturer(Base):
     """Производитель"""
     __tablename__ = "manufacturers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(LowercaseInputString(255), unique=True)
+    name: Mapped[str] = mapped_column(LowercaseInputCapitalizeOutputString(255), unique=True)
     locomotive_models: Mapped[list["LocomotiveModel"]] = relationship(back_populates="manufacturer")
     details: Mapped[list["Detail"]] = relationship(back_populates="manufacturer")
 
@@ -114,8 +116,8 @@ class User(Base, TimestampMixin):
     login: Mapped[str] = mapped_column(String(32), unique=True)
     password_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     password_salt: Mapped[str] = mapped_column(String(32), nullable=False)
-    first_name: Mapped[str | None] = mapped_column(LowercaseInputString(50), nullable=True)
-    last_name: Mapped[str | None] = mapped_column(LowercaseInputString(50), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(LowercaseInputCapitalizeOutputString(50), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(LowercaseInputCapitalizeOutputString(50), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="user")
@@ -153,5 +155,5 @@ class MaintenanceType(Base):
     """Тип обслуживания"""
     __tablename__ = "maintenance_types"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(LowercaseInputString(255))
+    name: Mapped[str] = mapped_column(LowercaseInputCapitalizeOutputString(255))
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="maintenance_type")
