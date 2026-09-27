@@ -5,8 +5,14 @@
 """
 
 
+
+
 class RepositoryError(Exception):
     """Базовое исключение всех репозиториев."""
+
+
+class AlreadyAddedError(RepositoryError):
+    """Уже есть в базе данных"""
 
 
 class NotFoundError(RepositoryError):
