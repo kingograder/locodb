@@ -15,8 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialogButtonBox, QLabel,
-    QLineEdit, QSizePolicy, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QComboBox, QDialogButtonBox,
+    QLabel, QLineEdit, QSizePolicy, QSpinBox,
+    QVBoxLayout, QWidget)
 
 class Ui_addDetail_dialog(object):
     def setupUi(self, addDetail_dialog):
@@ -25,6 +26,16 @@ class Ui_addDetail_dialog(object):
         addDetail_dialog.resize(384, 260)
         self.verticalLayout = QVBoxLayout(addDetail_dialog)
         self.verticalLayout.setObjectName(u"verticalLayout")
+        self.detailManufacturer_label = QLabel(addDetail_dialog)
+        self.detailManufacturer_label.setObjectName(u"detailManufacturer_label")
+
+        self.verticalLayout.addWidget(self.detailManufacturer_label)
+
+        self.detailManufacturer_comboBox = QComboBox(addDetail_dialog)
+        self.detailManufacturer_comboBox.setObjectName(u"detailManufacturer_comboBox")
+
+        self.verticalLayout.addWidget(self.detailManufacturer_comboBox)
+
         self.detailCode_label = QLabel(addDetail_dialog)
         self.detailCode_label.setObjectName(u"detailCode_label")
 
@@ -35,36 +46,25 @@ class Ui_addDetail_dialog(object):
 
         self.verticalLayout.addWidget(self.detailCode_lineEdit)
 
-        self.detailManufacturer_label = QLabel(addDetail_dialog)
-        self.detailManufacturer_label.setObjectName(u"detailManufacturer_label")
-
-        self.verticalLayout.addWidget(self.detailManufacturer_label)
-
-        self.detailManufacturer_lineEdit = QLineEdit(addDetail_dialog)
-        self.detailManufacturer_lineEdit.setObjectName(u"detailManufacturer_lineEdit")
-
-        self.verticalLayout.addWidget(self.detailManufacturer_lineEdit)
-
         self.detailName_label = QLabel(addDetail_dialog)
         self.detailName_label.setObjectName(u"detailName_label")
 
         self.verticalLayout.addWidget(self.detailName_label)
 
-        self.detailCode_lineEdit_2 = QLineEdit(addDetail_dialog)
-        self.detailCode_lineEdit_2.setObjectName(u"detailCode_lineEdit_2")
+        self.detailName_lineEdit = QLineEdit(addDetail_dialog)
+        self.detailName_lineEdit.setObjectName(u"detailName_lineEdit")
 
-        self.verticalLayout.addWidget(self.detailCode_lineEdit_2)
+        self.verticalLayout.addWidget(self.detailName_lineEdit)
 
         self.detailCount_label = QLabel(addDetail_dialog)
         self.detailCount_label.setObjectName(u"detailCount_label")
 
         self.verticalLayout.addWidget(self.detailCount_label)
 
-        self.detailCount_lineEdit = QLineEdit(addDetail_dialog)
-        self.detailCount_lineEdit.setObjectName(u"detailCount_lineEdit")
-        self.detailCount_lineEdit.setMaxLength(2)
+        self.detailCount_spinBox = QSpinBox(addDetail_dialog)
+        self.detailCount_spinBox.setObjectName(u"detailCount_spinBox")
 
-        self.verticalLayout.addWidget(self.detailCount_lineEdit)
+        self.verticalLayout.addWidget(self.detailCount_spinBox)
 
         self.buttonBox = QDialogButtonBox(addDetail_dialog)
         self.buttonBox.setObjectName(u"buttonBox")
@@ -80,8 +80,8 @@ class Ui_addDetail_dialog(object):
 
     def retranslateUi(self, addDetail_dialog):
         addDetail_dialog.setWindowTitle(QCoreApplication.translate("addDetail_dialog", u"Form", None))
-        self.detailCode_label.setText(QCoreApplication.translate("addDetail_dialog", u"\u0410\u0440\u0442\u0438\u043a\u0443\u043b", None))
         self.detailManufacturer_label.setText(QCoreApplication.translate("addDetail_dialog", u"\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u044c", None))
+        self.detailCode_label.setText(QCoreApplication.translate("addDetail_dialog", u"\u0410\u0440\u0442\u0438\u043a\u0443\u043b", None))
         self.detailName_label.setText(QCoreApplication.translate("addDetail_dialog", u"\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435", None))
         self.detailCount_label.setText(QCoreApplication.translate("addDetail_dialog", u"\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e", None))
     # retranslateUi

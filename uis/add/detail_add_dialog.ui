@@ -15,6 +15,16 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QLabel" name="detailManufacturer_label">
+     <property name="text">
+      <string>Производитель</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QComboBox" name="detailManufacturer_comboBox"/>
+   </item>
+   <item>
     <widget class="QLabel" name="detailCode_label">
      <property name="text">
       <string>Артикул</string>
@@ -25,16 +35,6 @@
     <widget class="QLineEdit" name="detailCode_lineEdit"/>
    </item>
    <item>
-    <widget class="QLabel" name="detailManufacturer_label">
-     <property name="text">
-      <string>Производитель</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLineEdit" name="detailManufacturer_lineEdit"/>
-   </item>
-   <item>
     <widget class="QLabel" name="detailName_label">
      <property name="text">
       <string>Наименование</string>
@@ -42,7 +42,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QLineEdit" name="detailCode_lineEdit_2"/>
+    <widget class="QLineEdit" name="detailName_lineEdit"/>
    </item>
    <item>
     <widget class="QLabel" name="detailCount_label">
@@ -52,11 +52,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QLineEdit" name="detailCount_lineEdit">
-     <property name="maxLength">
-      <number>2</number>
-     </property>
-    </widget>
+    <widget class="QSpinBox" name="detailCount_spinBox"/>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttonBox">
