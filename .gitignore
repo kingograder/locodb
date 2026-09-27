@@ -18,3 +18,5 @@ wheels/
 # Jupyter
 *.ipynb
 .ipynb_checkpoints
+
+.mimocode
