@@ -46,20 +46,10 @@ class Ui_addLocomotiveModel_dialog(object):
 
         self.verticalLayout.addWidget(self.manufacturer_label)
 
-        self.manufacturer_hLayout = QHBoxLayout()
-        self.manufacturer_hLayout.setObjectName(u"manufacturer_hLayout")
         self.maufacturer_comboBox = QComboBox(addLocomotiveModel_dialog)
         self.maufacturer_comboBox.setObjectName(u"maufacturer_comboBox")
 
-        self.manufacturer_hLayout.addWidget(self.maufacturer_comboBox)
-
-        self.maufacturer_toolButton = QToolButton(addLocomotiveModel_dialog)
-        self.maufacturer_toolButton.setObjectName(u"maufacturer_toolButton")
-
-        self.manufacturer_hLayout.addWidget(self.maufacturer_toolButton)
-
-
-        self.verticalLayout.addLayout(self.manufacturer_hLayout)
+        self.verticalLayout.addWidget(self.maufacturer_comboBox)
 
         self.locomotiveModel_label = QLabel(addLocomotiveModel_dialog)
         self.locomotiveModel_label.setObjectName(u"locomotiveModel_label")
@@ -108,7 +98,6 @@ class Ui_addLocomotiveModel_dialog(object):
         addLocomotiveModel_dialog.setWindowTitle(QCoreApplication.translate("addLocomotiveModel_dialog", u"Form", None))
         self.locomotiveCode_label.setText(QCoreApplication.translate("addLocomotiveModel_dialog", u"\u0410\u0440\u0442\u0438\u043a\u0443\u043b", None))
         self.manufacturer_label.setText(QCoreApplication.translate("addLocomotiveModel_dialog", u"\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u044c", None))
-        self.maufacturer_toolButton.setText(QCoreApplication.translate("addLocomotiveModel_dialog", u"...", None))
         self.locomotiveModel_label.setText(QCoreApplication.translate("addLocomotiveModel_dialog", u"\u041c\u043e\u0434\u0435\u043b\u044c", None))
         self.loadImage_label.setText(QCoreApplication.translate("addLocomotiveModel_dialog", u"\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435", None))
         self.filepicker_toolButton.setText(QCoreApplication.translate("addLocomotiveModel_dialog", u"...", None))
