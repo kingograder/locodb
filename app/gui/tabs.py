@@ -288,9 +288,9 @@ class LocomotiveModelsTab(BaseTab):
 
     def _row_values(self, item) -> list[str]:
         return [
+            "",  # фото ставится виджетом в reload()
             item.manufacturer.name,
             str(item.code),
-            "",  # фото ставится виджетом в reload()
             item.name,
         ]
 
