@@ -20,9 +20,6 @@ class TimestampMixin:
     )
 
 
-
-
-
 class LowercaseInputString(TypeDecorator):
     """Переводит все символы в нижний регистр перед записью в БД"""
     impl = String
@@ -40,13 +37,20 @@ class LowercaseInputString(TypeDecorator):
 
 class LowercaseInputCapitalizeOutputString(LowercaseInputString):
     """Возвращает значение с заглавной буквой для названий и имен"""
+    impl=String
+    cache_ok = True
+
     def process_result_value(self, value, dialect):
         if value is None:
             return None
         return value.capitalize()
 
+
 class LocomotiveModelDetail(Base):
-    """Связь Модель - Деталь"""
+    """Эталонная таблица для составления какие детали
+    соответсвуют данному локомотиву,
+    заполняется автоматически по мере составления
+    листов обслуживания"""
     __tablename__ = "locomotive_model_details"
     id: Mapped[int] = mapped_column(primary_key=True)
     locomotive_model: Mapped["LocomotiveModel"] = relationship(back_populates="details")
@@ -133,6 +137,7 @@ class Maintenance(Base, TimestampMixin):
     locomotive: Mapped["Locomotive"] = relationship(back_populates="maintenances")
     user: Mapped["User"] = relationship(back_populates="maintenances")
     details: Mapped[list["MaintenanceDetail"]] = relationship(back_populates="maintenance")
+    date: Mapped[datetime]
 
     maintenance_type_id: Mapped[int] = mapped_column(ForeignKey("maintenance_types.id"))
     locomotive_id: Mapped[int] = mapped_column(ForeignKey("locomotives.id"))
@@ -143,7 +148,7 @@ class Locomotive(Base):
     """Локомотивы"""
     __tablename__ = "locomotives"
     id: Mapped[int] = mapped_column(primary_key=True)
-    number: Mapped[int]
+    number: Mapped[int] = mapped_column(unique=True)
     system: Mapped[int]
     model: Mapped["LocomotiveModel"] = relationship(back_populates="locomotives")
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="locomotive")
@@ -157,3 +162,17 @@ class MaintenanceType(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(LowercaseInputCapitalizeOutputString(255))
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="maintenance_type")
+
+
+class Supply(Base, TimestampMixin):
+    """Приход деталей на склад: одна строка — одна деталь."""
+    __tablename__ = "supplies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quantity: Mapped[int]
+    supply_number: Mapped[int] #  Номер прихода (Так как id не соответсвует реальному номеру листа прихода)
+    user: Mapped["User"] = relationship()
+    detail: Mapped["Detail"] = relationship()
+
+
+    detail_id: Mapped[int] = mapped_column(ForeignKey("details.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
