@@ -488,6 +488,8 @@ class DetailDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self._on_save)
         self.ui.buttonBox.rejected.connect(self.reject)
 
+        self._load_manufacturers()
+
         if item is None:
             self.setWindowTitle("Новая деталь")
         else:
@@ -497,19 +499,25 @@ class DetailDialog(QDialog):
     def _load_data(self, item) -> None:
         """Заполняет поля данными детали."""
         self.ui.detailCode_lineEdit.setText(str(item.code))
-        self.ui.detailCode_lineEdit_2.setText(item.name)
-        self.ui.detailCount_lineEdit.setText(str(item.quantity_in_stock))
-        if item.manufacturer is not None:
-            self.ui.detailManufacturer_lineEdit.setText(item.manufacturer.name)
+        self.ui.detailName_lineEdit.setText(item.name)
+        self.ui.detailCount_spinBox.setValue(item.quantity_in_stock)
+        self.ui.detailManufacturer_comboBox.addItem(item)
 
     def _collect_fields(self) -> dict:
         """Собирает значения полей формы."""
         return {
             "code": self.ui.detailCode_lineEdit.text().strip(),
-            "manufacturer_name": self.ui.detailManufacturer_lineEdit.text().strip(),
-            "name": self.ui.detailCode_lineEdit_2.text().strip(),
-            "quantity_in_stock": self.ui.detailCount_lineEdit.text().strip(),
+            "manufacturer_name": self.ui.detailManufacturer_comboBox.currentText(),
+            "name": self.ui.detailName_lineEdit.text().strip(),
+            "quantity_in_stock": self.ui.detailCount_spinBox.text(),
         }
+
+    def _load_manufacturers(self) -> None:
+        """Загружает список моделей локомотивов."""
+        combo = self.ui.detailManufacturer_comboBox
+        combo.clear()
+        for man in self.services.manufacturers.list_all():
+            combo.addItem(man.name if man.name else NO_DATA)
 
     def _validate(self) -> bool:
         """Проверяет корректность заполнения формы."""
