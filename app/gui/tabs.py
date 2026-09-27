@@ -138,7 +138,8 @@ class BaseTab(QWidget):
         """Ставит QLabel с фото в PHOTO_COLUMN каждой строки."""
         table = self.ui.base_table
         for row, item in enumerate(self._items):
-            table.setCellWidget(row, self.PHOTO_COLUMN, self._build_photo_label(item))
+            if self.PHOTO_COLUMN:
+                table.setCellWidget(row, self.PHOTO_COLUMN, self._build_photo_label(item))
 
     def _build_photo_label(self, item) -> QLabel:
         """QLabel с картинкой или заглушкой, если файла нет."""
@@ -240,7 +241,7 @@ class BaseTab(QWidget):
 class MaintenanceTypesTab(BaseTab):
     """Вкладка «Типы обслуживания»."""
 
-    HEADERS = ["ID", "Название"]
+    HEADERS = ["Название"]
     DIALOG_CLASS = MaintenanceTypeDialog
     NOT_FOUND_ERROR = MaintenanceTypeNotFoundError
 
@@ -248,7 +249,7 @@ class MaintenanceTypesTab(BaseTab):
         return self.services.maintenance_types
 
     def _row_values(self, item) -> list[str]:
-        return [str(item.id), item.name]
+        return [item.name]
 
     def _delete_prompt(self, item) -> str:
         return f"Удалить тип обслуживания «{item.name}»?\nДействие нельзя отменить."
@@ -257,7 +258,7 @@ class MaintenanceTypesTab(BaseTab):
 class ManufacturersTab(BaseTab):
     """Вкладка «Производители»."""
 
-    HEADERS = ["ID", "Название"]
+    HEADERS = ["Название"]
     DIALOG_CLASS = ManufacturerDialog
     NOT_FOUND_ERROR = ManufacturerNotFoundError
 
@@ -265,7 +266,7 @@ class ManufacturersTab(BaseTab):
         return self.services.manufacturers
 
     def _row_values(self, item) -> list[str]:
-        return [str(item.id), item.name]
+        return [item.name]
 
     def _delete_prompt(self, item) -> str:
         return f"Удалить производителя «{item.name}»?\nДействие нельзя отменить."
@@ -274,7 +275,7 @@ class ManufacturersTab(BaseTab):
 class LocomotiveModelsTab(BaseTab):
     """Вкладка «Модели локомотивов»."""
 
-    HEADERS = ["ID", "Фото", "Артикул", "Производитель", "Модель"]
+    HEADERS = ["Фото", "Производитель", "Артикул", "Модель"]
     DIALOG_CLASS = LocomotiveModelDialog
     NOT_FOUND_ERROR = LocomotiveModelNotFoundError
     PHOTO_COLUMN = 1
@@ -286,18 +287,16 @@ class LocomotiveModelsTab(BaseTab):
         return item.image_path
 
     def _row_values(self, item) -> list[str]:
-        manufacturer = item.manufacturer.name if item.manufacturer else NO_DATA
         return [
-            str(item.id),
-            "",  # фото ставится виджетом в reload()
+            item.manufacturer.name,
             str(item.code),
-            manufacturer,
+            "",  # фото ставится виджетом в reload()
             item.name,
         ]
 
     def _delete_prompt(self, item) -> str:
         return (
-            f"Удалить модель локомотива «{item.code} {item.name}»?\n"
+            f"Удалить локомотив {item.manufacturer.name} {item.code}?\n"
             f"Действие нельзя отменить."
         )
 
@@ -308,7 +307,7 @@ class LocomotivesTab(BaseTab):
     Фото живёт в модели, а не в локомотиве — берём через связь.
     """
 
-    HEADERS = ["ID", "Фото", "Система", "Номер", "Производитель", "Модель", "Артикул"]
+    HEADERS = ["Система", "Номер", "Фото", "Производитель", "Артикул", "Модель"]
     DIALOG_CLASS = LocomotiveDialog
     NOT_FOUND_ERROR = LocomotiveNotFoundError
     PHOTO_COLUMN = 1
@@ -325,18 +324,17 @@ class LocomotivesTab(BaseTab):
             model.manufacturer.name if model and model.manufacturer else NO_DATA
         )
         return [
-            str(item.id),
-            "",  # фото ставится виджетом в reload()
             str(item.system),
             str(item.number),
+            "",  # фото ставится виджетом в reload()
             manufacturer,
-            model.name if model else NO_DATA,
             str(model.code) if model else NO_DATA,
+            model.name if model else NO_DATA,
         ]
 
     def _delete_prompt(self, item) -> str:
         return (
-            f"Удалить локомотив «{item.system} {item.number}»?\n"
+            f"Удалить локомотив {item.number} с системы {item.system}?\n"
             f"Действие нельзя отменить."
         )
 
@@ -344,7 +342,7 @@ class LocomotivesTab(BaseTab):
 class DetailsTab(BaseTab):
     """Вкладка «Детали»."""
 
-    HEADERS = ["ID", "Артикул", "Производитель", "Наименование", "Остаток"]
+    HEADERS = ["Производитель", "Артикул", "Наименование", "Остаток"]
     DIALOG_CLASS = DetailDialog
     NOT_FOUND_ERROR = DetailNotFoundError
 
@@ -354,9 +352,8 @@ class DetailsTab(BaseTab):
     def _row_values(self, item) -> list[str]:
         manufacturer = item.manufacturer.name if item.manufacturer else NO_DATA
         return [
-            str(item.id),
-            str(item.code),
             manufacturer,
+            str(item.code),
             item.name,
             str(item.quantity_in_stock),
         ]
@@ -368,7 +365,7 @@ class DetailsTab(BaseTab):
 class MaintenancesTab(BaseTab):
     """Вкладка «Листы обслуживания»."""
 
-    HEADERS = ["ID", "Локомотив", "Тип", "Комментарий", "Автор"]
+    HEADERS = ["Локомотив", "Тип", "Комментарий", "Автор"]
     DIALOG_CLASS = MaintenanceDialog
     NOT_FOUND_ERROR = MaintenanceNotFoundError
     DELETE_LABEL = "Пометить на удаление"
@@ -384,7 +381,6 @@ class MaintenancesTab(BaseTab):
         type_text = item.maintenance_type.name if item.maintenance_type else NO_DATA
         author_text = f"{item.user.first_name} {item.user.last_name}" if item.user else NO_DATA
         return [
-            str(item.id),
             locomotive_text,
             type_text,
             item.description or "",
@@ -392,7 +388,7 @@ class MaintenancesTab(BaseTab):
         ]
 
     def _delete_prompt(self, item) -> str:
-        return f"Пометить на удаление лист обслуживания «{item.id}»?"
+        return f"Пометить на удаление лист обслуживания {item.id}?"
 
 
 class SuppliesTab(BaseTab):
@@ -403,7 +399,7 @@ class SuppliesTab(BaseTab):
     один номер прихода, а не одна запись.
     """
 
-    HEADERS = ["Номер", "Дата", "Деталей", "Итого шт", "Автор"]
+    HEADERS = ["Номер", "Дата", "Деталей", "Всего", "Автор"]
     ADD_LABEL = "Создать приход"
     EDIT_LABEL = "Изменить"
     DELETE_LABEL = "Удалить"
