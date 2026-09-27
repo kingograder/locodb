@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, contains_eager, joinedload, sessionmaker
 from app.autorization import check_password, hash_password
 from app.db.exceptions import (
     DetailNotFoundError,
+    AlreadyAddedError,
     EntityInUseError,
     InvalidPasswordError,
     LastActiveAdminError,
