@@ -1,46 +1,71 @@
+# -*- coding: utf-8 -*-
+"""Точка входа: настройка логирования, инициализация БД, запуск UI."""
+
 import logging
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from app.db.functions import init_db
-from app.app import ScreensStack
+
 from PySide6.QtWidgets import QApplication
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-engine = create_engine("sqlite:///./data/database.sqlite", echo=True)
-session_factory = sessionmaker(engine, expire_on_commit=False)
+from app.db.init import init_db
+from app.services import Services
+from app.app import ScreensStack
+
 logger = logging.getLogger(__name__)
+
+DATA_DIR = Path("./data")
+LOGS_DIR = DATA_DIR / "logs"
+IMAGES_DIR = DATA_DIR / "images"
+DATABASE_URL = f"sqlite:///{DATA_DIR / 'database.sqlite'}"
 
 
 def create_directories(dirs: list[Path]) -> None:
-    """
-    Creating directories on startup
-    """
+    """Создаёт директории, если их ещё нет."""
     for path in dirs:
-        Path(path).mkdir(parents=True, exist_ok=True)
-        logger.info(f"Directory {path} not found. Creating...")
+        path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Директория подготовлена: {path}")
 
-def setup_logging():
+
+def setup_logging() -> None:
+    """Настраивает логирование в файл и в консоль."""
+    log_file = LOGS_DIR / f"app_{datetime.now(UTC):%Y-%m-%d_%H-%M-%S}.log"
     logging.basicConfig(
         level=logging.INFO,
         datefmt="%Y-%m-%d %H:%M:%S",
         format="[%(asctime)s.%(msecs)03d] %(module)10s:%(lineno)-3d %(levelname)-7s - %(message)s",
         handlers=[
-            logging.FileHandler(
-                f"./data/logs/app_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log",
-                encoding="utf-8",
-            ),
+            logging.FileHandler(log_file, encoding="utf-8"),
             logging.StreamHandler(),
         ],
     )
 
-if __name__ == "__main__":
-    create_directories([Path("./data"), Path("./data/logs"), Path("./data/images")])
-    setup_logging()
+
+def build_services() -> Services:
+    """Создаёт движок, фабрику сессий и контейнер репозиториев."""
+    # expire_on_commit=False — объекты остаются живыми после коммита,
+    # это удобно для UI, который читает поля уже после сохранения.
+    engine = create_engine(DATABASE_URL, echo=False)
+    session_factory = sessionmaker(engine, expire_on_commit=False)
     init_db(engine, session_factory)
+    return Services(session_factory)
+
+
+def main() -> int:
+    """Запускает приложение и возвращает код выхода."""
+    create_directories([DATA_DIR, LOGS_DIR, IMAGES_DIR])
+    setup_logging()
+
+    services = build_services()
+
     app = QApplication(sys.argv)
-    stack = ScreensStack(session_factory)
+    stack = ScreensStack(services)
     stack.resize(1280, 720)
     stack.show()
-    sys.exit(app.exec())
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
