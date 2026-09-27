@@ -18,7 +18,7 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>4</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="maintenances_tab">
        <property name="layoutDirection">
@@ -43,14 +43,14 @@
         <string>Модели локомотивов</string>
        </attribute>
       </widget>
-      <widget class="QWidget" name="supplies_tab">
-       <attribute name="title">
-        <string>Приход</string>
-       </attribute>
-      </widget>
       <widget class="QWidget" name="details_tab">
        <attribute name="title">
         <string>Детали</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="supplies_tab">
+       <attribute name="title">
+        <string>Приход</string>
        </attribute>
       </widget>
       <widget class="QWidget" name="manufactures_tab">
