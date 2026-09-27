@@ -38,18 +38,7 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="manufacturer_hLayout">
-     <item>
-      <widget class="QComboBox" name="maufacturer_comboBox"/>
-     </item>
-     <item>
-      <widget class="QToolButton" name="maufacturer_toolButton">
-       <property name="text">
-        <string>...</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
+    <widget class="QComboBox" name="maufacturer_comboBox"/>
    </item>
    <item>
     <widget class="QLabel" name="locomotiveModel_label">
