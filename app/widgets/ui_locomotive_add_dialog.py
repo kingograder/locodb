@@ -16,9 +16,8 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QComboBox, QDialogButtonBox,
-    QHBoxLayout, QLabel, QLineEdit, QSizePolicy,
-    QSpinBox, QTextEdit, QToolButton, QVBoxLayout,
-    QWidget)
+    QLabel, QLineEdit, QSizePolicy, QSpinBox,
+    QTextEdit, QVBoxLayout, QWidget)
 
 class Ui_addLocomotive_dialog(object):
     def setupUi(self, addLocomotive_dialog):
@@ -52,21 +51,10 @@ class Ui_addLocomotive_dialog(object):
 
         self.verticalLayout.addWidget(self.locomotiveModel_label)
 
-        self.locomotiveModel_hLayout = QHBoxLayout()
-        self.locomotiveModel_hLayout.setSpacing(0)
-        self.locomotiveModel_hLayout.setObjectName(u"locomotiveModel_hLayout")
         self.locomotiveModel_comboBox = QComboBox(addLocomotive_dialog)
         self.locomotiveModel_comboBox.setObjectName(u"locomotiveModel_comboBox")
 
-        self.locomotiveModel_hLayout.addWidget(self.locomotiveModel_comboBox)
-
-        self.locomotiveModel_toolButton = QToolButton(addLocomotive_dialog)
-        self.locomotiveModel_toolButton.setObjectName(u"locomotiveModel_toolButton")
-
-        self.locomotiveModel_hLayout.addWidget(self.locomotiveModel_toolButton)
-
-
-        self.verticalLayout.addLayout(self.locomotiveModel_hLayout)
+        self.verticalLayout.addWidget(self.locomotiveModel_comboBox)
 
         self.system_label = QLabel(addLocomotive_dialog)
         self.system_label.setObjectName(u"system_label")
@@ -105,7 +93,6 @@ class Ui_addLocomotive_dialog(object):
         self.comment_label.setText(QCoreApplication.translate("addLocomotive_dialog", u"\u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439", None))
         self.number_label.setText(QCoreApplication.translate("addLocomotive_dialog", u"\u041d\u043e\u043c\u0435\u0440", None))
         self.locomotiveModel_label.setText(QCoreApplication.translate("addLocomotive_dialog", u"\u041c\u043e\u0434\u0435\u043b\u044c \u043b\u043e\u043a\u043e\u043c\u043e\u0442\u0438\u0432\u0430", None))
-        self.locomotiveModel_toolButton.setText(QCoreApplication.translate("addLocomotive_dialog", u"...", None))
         self.system_label.setText(QCoreApplication.translate("addLocomotive_dialog", u"\u0421\u0438\u0441\u0442\u0435\u043c\u0430", None))
         self.typt_label.setText(QCoreApplication.translate("addLocomotive_dialog", u"\u0422\u0438\u043f", None))
     # retranslateUi
