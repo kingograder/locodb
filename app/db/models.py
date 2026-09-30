@@ -160,7 +160,7 @@ class MaintenanceType(Base):
     """Тип обслуживания"""
     __tablename__ = "maintenance_types"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(LowercaseInputCapitalizeOutputString(255))
+    name: Mapped[str] = mapped_column(LowercaseInputCapitalizeOutputString(255), unique=True)
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="maintenance_type")
 
 
