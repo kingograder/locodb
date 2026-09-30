@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.base import Base
 from app.db.exceptions import LoginAlreadyTakenError
-from app.db.repositories import ManufacturerRepository, UserRepository
+from app.db.repositories import MaintenanceRepository, MaintenanceTypeRepository, ManufacturerRepository, UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def init_db(engine, session_factory) -> None:
     _ensure_default_admin(session_factory)
     # Производители создаются в любом случае при старте программы, это проблема надо будет исправить
     _create_manufacturers_on_startup(session_factory)
-
+    _create_maintenance_type_on_startup(session_factory)
 
 def _ensure_default_admin(session_factory) -> None:
     """Создаёт стартового администратора admin/admin, если его ещё нет."""
@@ -47,12 +47,26 @@ def _ensure_default_admin(session_factory) -> None:
 
 def _create_manufacturers_on_startup(session_factory) -> None:
     manufacturers = ManufacturerRepository(session_factory)
-    manufacturer_list = ["Roco", "Piko"]
-    try:
-        for i in manufacturer_list:
-            manufacturers.create(
-                name=i
-            )
-        logger.info("Созданы производители")
-    except SQLAlchemyError as e:
-        logger.info(f"Ошибка при заполнении номенклатуры производителей: {e}")
+    if not manufacturers.get_by_name("Roco"):
+        manufacturer_list = ["Roco", "Piko"]
+        try:
+            for i in manufacturer_list:
+                manufacturers.create(
+                    name=i
+                )
+            logger.info("Созданы производители")
+        except SQLAlchemyError as e:
+            logger.info(f"Ошибка при заполнении номенклатуры производителей: {e}")
+
+def _create_maintenance_type_on_startup(session_factory) -> None:
+    maintenance_types = MaintenanceTypeRepository(session_factory)
+    maintenance_types_list = ["Разное"]
+    if not maintenance_types.get_by_name("Разное"):
+        try:
+            for i in maintenance_types_list:
+                maintenance_types.create(
+                    name=i
+                )
+            logger.info("Созданы типы обслуживания")
+        except SQLAlchemyError as e:
+            logger.info(f"Ошибка при заполнении номенклатуры типов обслуживания: {e}")
