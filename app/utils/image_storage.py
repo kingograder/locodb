@@ -5,7 +5,7 @@
 В БД пишем относительный путь вида "data/images/xxx.jpeg",
 чтобы проект можно было перенести на другую машину без правок.
 """
-
+import uuid
 import logging
 from pathlib import Path
 
@@ -34,22 +34,18 @@ def _sanitize_filename_part(value: str) -> str:
 
 
 def save_model_image(source_path: str, manufacturer_name: str, code: int) -> str:
-    """Сохраняет картинку в data/images как JPEG и возвращает относительный путь.
-
-    source_path — путь к исходному файлу, выбранному пользователем.
-    Если файл не читается или не сохраняется — бросает ValueError/OSError,
-    чтобы вызывающий код мог показать пользователю понятное сообщение.
-    """
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{_sanitize_filename_part(manufacturer_name)}_{code}.jpeg"
+    stem = f"{_sanitize_filename_part(manufacturer_name)}_{code}"
+    # Уникальный суффикс — путь меняется при каждом сохранении,
+    # поэтому Qt/ОС не могут отдать старый пиксмап по тому же имени.
+    filename = f"{stem}_{uuid.uuid4().hex[:8]}.jpeg"
     target = IMAGES_DIR / filename
 
     image = QImage(source_path)
     if image.isNull():
         raise ValueError(f"Не удалось прочитать изображение: {source_path}")
 
-    # Формат определяется по расширению .jpeg, quality — уровень сжатия 0–100.
     if not image.save(str(target), quality=JPEG_QUALITY):
         raise OSError(f"Не удалось сохранить изображение в {target}")
 
