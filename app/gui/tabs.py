@@ -362,6 +362,8 @@ class MaintenancesTab(BaseTab):
         "Комментарий": ("text", lambda it: it.description or ""),
         "Автор":     ("text", lambda it: f"{it.user.first_name} {it.user.last_name}"
                                          if it.user else None),
+        "Дата":        ("text", lambda it: it.date.strftime("%d.%m.%Y")
+                                               if it.date else None),
     }
 
     def _repo(self):
