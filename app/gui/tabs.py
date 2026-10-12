@@ -16,12 +16,12 @@ QLabel с картинкой (или заглушкой), тип "text" — об
 Если getter вернул None, в ячейку-текст попадёт NO_DATA.
 """
 
+
 import logging
 from pathlib import Path
 from typing import Any, Callable
-
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QPixmapCache
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -120,8 +120,8 @@ class BaseTab(QWidget):
         raise NotImplementedError
 
     def reload(self) -> None:
-        """Перечитывает данные из БД и перерисовывает таблицу."""
         self._items = self._repo().list_all()
+        QPixmapCache.clear()
         self._fill_table()
 
     def _fill_table(self) -> None:
