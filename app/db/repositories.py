@@ -362,7 +362,7 @@ class MaintenanceRepository(BaseRepository[Maintenance]):
     model = Maintenance
     not_found_error = MaintenanceNotFoundError
     soft_delete_field = "is_deleted"
-    default_order_by = (Maintenance.created_at.desc(),)
+    default_order_by = (Maintenance.date.desc(), Maintenance.created_at.desc())
     default_options = (
         joinedload(Maintenance.locomotive)
         .joinedload(Locomotive.model).joinedload(LocomotiveModel.manufacturer),
