@@ -48,7 +48,7 @@ def _ensure_default_admin(session_factory) -> None:
 def _create_manufacturers_on_startup(session_factory) -> None:
     manufacturers = ManufacturerRepository(session_factory)
     if not manufacturers.get_by_name("Roco"):
-        manufacturer_list = ["Roco", "Piko"]
+        manufacturer_list = ["Roco", "Piko", "Bachmann", "Fleischmann"]
         try:
             for i in manufacturer_list:
                 manufacturers.create(
