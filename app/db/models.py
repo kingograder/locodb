@@ -73,21 +73,6 @@ class MaintenanceDetail(Base):
     maintenance_id: Mapped[int] = mapped_column(ForeignKey("maintenances.id"))
 
 
-class LocomotiveModel(Base):
-    """Модели локомотивов"""
-    __tablename__ = "locomotive_models"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[int]
-    name: Mapped[str] = mapped_column(LowercaseInputString(255))
-    image_path: Mapped[str | None] = mapped_column(String(255), unique=True)
-    manufacturer: Mapped["Manufacturer"] = relationship(back_populates="locomotive_models")
-    locomotives: Mapped[list["Locomotive"]] = relationship(back_populates="model")
-    details: Mapped[list["LocomotiveModelDetail"]] = relationship(back_populates="locomotive_model")
-
-    manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturers.id"))
-
-    __table_args__ = (UniqueConstraint("code", "manufacturer_id"),)
-
 class Detail(Base):
     """Детали"""
     __tablename__ = "details"
@@ -152,8 +137,25 @@ class Locomotive(Base):
     system: Mapped[int]
     model: Mapped["LocomotiveModel"] = relationship(back_populates="locomotives")
     maintenances: Mapped[list["Maintenance"]] = relationship(back_populates="locomotive")
-
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
     locomotive_model_id: Mapped[int] = mapped_column(ForeignKey("locomotive_models.id"))
+
+
+class LocomotiveModel(Base):
+    """Модели локомотивов"""
+    __tablename__ = "locomotive_models"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[int]
+    name: Mapped[str] = mapped_column(LowercaseInputString(255))
+    image_path: Mapped[str | None] = mapped_column(String(255), unique=True)
+    manufacturer: Mapped["Manufacturer"] = relationship(back_populates="locomotive_models")
+    locomotives: Mapped[list["Locomotive"]] = relationship(back_populates="model")
+    details: Mapped[list["LocomotiveModelDetail"]] = relationship(back_populates="locomotive_model")
+
+    manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturers.id"))
+
+    __table_args__ = (UniqueConstraint("code", "manufacturer_id"),)
 
 
 class MaintenanceType(Base):

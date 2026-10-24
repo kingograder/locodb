@@ -400,12 +400,18 @@ class LocomotiveDialog(QDialog):
         index = self.ui.locomotiveModel_comboBox.findData(item.locomotive_model_id)
         if index >= 0:
             self.ui.locomotiveModel_comboBox.setCurrentIndex(index)
+        if item.comment:
+            self.ui.comment_textEdit.setPlainText(item.comment)
+        if item.kind:
+            self.ui.type_lineEdit.setText(item.kind)
 
     def _collect(self) -> dict:
         return {
             "system": self.ui.system_spinBox.value(),
             "number": self.ui.number_lineEdit.text().strip(),
             "locomotive_model_id": self.ui.locomotiveModel_comboBox.currentData(),
+            "comment": self.ui.comment_textEdit.toPlainText().strip(),
+            "kind": self.ui.type_lineEdit.text().strip(),
         }
 
     def _validate(self, fields: dict) -> bool:
@@ -431,6 +437,8 @@ class LocomotiveDialog(QDialog):
             "system": fields["system"],
             "number": int(fields["number"]),
             "locomotive_model_id": fields["locomotive_model_id"],
+            "comment": fields["comment"] or None,
+            "kind": fields["kind"] or None,
         }
 
         def action():
