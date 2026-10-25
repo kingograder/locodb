@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Диалоги создания и редактирования.
-
-Каждый диалог принимает Services и работает только через репозитории.
-Доменные исключения репозиториев показываются пользователю здесь.
+"""
+Диалоги создания и редактирования.
 """
 
 import logging
 from datetime import UTC, datetime, time
 from pathlib import Path
+from typing import Any, Callable
 
 from PySide6.QtCore import QDate, QDateTime, QTime
 from PySide6.QtWidgets import (
@@ -16,18 +15,11 @@ from PySide6.QtWidgets import (
 )
 
 from app.db.exceptions import (
-    AlreadyAddedError,
-    DetailNotFoundError,
-    EntityInUseError,
-    LastActiveAdminError,
-    LocomotiveModelNotFoundError,
-    LocomotiveNotFoundError,
-    LoginAlreadyTakenError,
-    MaintenanceNotFoundError,
-    MaintenanceTypeNotFoundError,
-    ManufacturerNotFoundError,
-    SupplyNotFoundError,
-    UserNotFoundError,
+    AlreadyAddedError, DetailNotFoundError, EntityInUseError,
+    LastActiveAdminError, LocomotiveModelNotFoundError, LocomotiveNotFoundError,
+    LoginAlreadyTakenError, MaintenanceNotFoundError,
+    MaintenanceTypeNotFoundError, ManufacturerNotFoundError,
+    SupplyNotFoundError, UserNotFoundError,
 )
 from app.db.models import Detail
 from app.services import Services
@@ -48,8 +40,8 @@ IMAGE_FILTER = "Изображения (*.png *.jpg *.jpeg *.bmp)"
 BOOL_YES = "Да"
 BOOL_NO = "Нет"
 NO_DATA = "—"
+PLACEHOLDER = "— выберите —"
 
-# Все доменные ошибки "запись не найдена". Используются в _try_save.
 _NOT_FOUND = (
     DetailNotFoundError, LocomotiveModelNotFoundError, LocomotiveNotFoundError,
     MaintenanceNotFoundError, MaintenanceTypeNotFoundError, ManufacturerNotFoundError,
@@ -57,19 +49,42 @@ _NOT_FOUND = (
 )
 
 
-def _fill_combo(combo: QComboBox, items, label, data=lambda item: item.id) -> None:
-    """Заполняет combo. label(item) даёт текст, data(item) значение."""
+def _fill_combo(
+    combo: QComboBox,
+    items: list,
+    label_func: Callable[[Any], str],
+    data_func: Callable[[Any], Any] = lambda item: item.id,
+    placeholder: str | None = PLACEHOLDER,
+) -> None:
+    """Заполняет combo, настраивая плейсхолдер для обычного или редактируемого вида."""
     combo.clear()
-    for item in items:
-        combo.addItem(label(item), data(item))
+
+    if combo.isEditable():
+        for item in items:
+            combo.addItem(label_func(item), data_func(item))
+        combo.setCurrentIndex(-1)
+        combo.setEditText("")
+        if placeholder is not None:
+            combo.lineEdit().setPlaceholderText(placeholder)
+    else:
+        if placeholder is not None:
+            combo.addItem(placeholder, None)
+        for item in items:
+            combo.addItem(label_func(item), data_func(item))
+        combo.setCurrentIndex(0)
 
 
-def _try_save(dialog: QDialog, action, not_found_msg: str = "Запись не найдена") -> bool:
-    """Выполняет действие и переводит доменные ошибки в сообщения.
+def _select_combo_data(combo: QComboBox, value: Any) -> None:
+    index = combo.findData(value)
+    if index >= 0:
+        combo.setCurrentIndex(index)
 
-    Уникальность и валидацию проверяет репозиторий, здесь показываем
-    готовый текст. Возвращает True при успехе.
-    """
+
+def _try_save(
+    dialog: QDialog,
+    action: Callable[[], None],
+    not_found_msg: str = "Запись не найдена",
+) -> bool:
     try:
         action()
         return True
@@ -80,8 +95,53 @@ def _try_save(dialog: QDialog, action, not_found_msg: str = "Запись не �
     return False
 
 
+def _validate_required(value: str, field_name: str) -> str | None:
+    if not value.strip():
+        return f"Укажите {field_name.lower()}"
+    return None
+
+
+def _validate_int(value: str, field_name: str, min_value: int | None = None) -> str | None:
+    if not value.strip():
+        return f"Укажите {field_name.lower()}"
+    try:
+        parsed_value = int(value)
+    except ValueError:
+        return f"{field_name.capitalize()} должен быть целым числом"
+
+    if min_value is not None and parsed_value < min_value:
+        return f"{field_name.capitalize()} не может быть меньше {min_value}"
+    return None
+
+
+def _validate_model_fields(fields: dict) -> str | None:
+    if error := _validate_int(fields["code"], "Артикул", min_value=0): return error
+    if fields["manufacturer_id"] is None: return "Выберите производителя"
+    if error := _validate_required(fields["name"], "название модели"): return error
+    return None
+
+
+def _validate_locomotive_fields(fields: dict) -> str | None:
+    if error := _validate_int(fields["number"], "Номер локомотива", min_value=0): return error
+    if fields["locomotive_model_id"] is None: return "Выберите модель"
+    return None
+
+
+def _validate_detail_fields(fields: dict) -> str | None:
+    if error := _validate_int(fields["code"], "Артикул", min_value=0): return error
+    if fields["manufacturer_id"] is None: return "Выберите производителя"
+    if error := _validate_required(fields["name"], "наименование"): return error
+    if error := _validate_int(fields["quantity_in_stock"], "Остаток", min_value=0): return error
+    return None
+
+
+def _validate_maintenance_fields(fields: dict) -> str | None:
+    if fields["locomotive_id"] is None: return "Выберите локомотив"
+    if fields["maintenance_type_id"] is None: return "Выберите тип обслуживания"
+    return None
+
+
 def _last_admin_message(will_be_admin: bool, will_be_active: bool) -> str:
-    """Подбирает текст под то, что меняется у последнего админа."""
     if not will_be_admin and not will_be_active:
         return "Нельзя разжаловать и отключить последнего активного администратора"
     if not will_be_admin:
@@ -89,8 +149,6 @@ def _last_admin_message(will_be_admin: bool, will_be_active: bool) -> str:
     return "Нельзя отключить последнего активного администратора"
 
 
-# Формат подписей в выпадающих списках. Префиксы короткие и однозначные:
-# S system, N number, M manufacturer, Art article.
 def _locomotive_label(loco) -> str:
     return f"S:{loco.system} N:{loco.number}"
 
@@ -106,12 +164,7 @@ def _detail_label(detail) -> str:
 
 
 class DetailRowsEditor:
-    """Управляет таблицей состава деталей.
-
-    Одинаково используется в листах обслуживания и в приходах.
-    Следит за настройкой таблицы, добавлением и удалением строк,
-    чтением и записью состава.
-    """
+    """Управляет таблицей состава деталей в листах обслуживания и приходах."""
 
     def __init__(
         self, table: QTableWidget, add_button: QPushButton,
@@ -134,27 +187,27 @@ class DetailRowsEditor:
         remove_button.clicked.connect(lambda _=False: self.remove_row())
 
     def add_row(self, detail_id: int | None = None, quantity: int = 1) -> None:
-        """Добавляет строку выбора детали и количества."""
         if not self.details:
             QMessageBox.information(
                 self.parent, "Нет деталей", "Сначала добавьте деталь в справочник."
             )
             return
-        if detail_id is not None and all(d.id != detail_id for d in self.details):
+        if detail_id is not None and not any(d.id == detail_id for d in self.details):
             return
 
         row = self.table.rowCount()
         self.table.insertRow(row)
 
         combo = QComboBox(self.parent)
-        for detail in self.details:
-            combo.addItem(_detail_label(detail), detail.id)
+        _fill_combo(combo, self.details, _detail_label, placeholder=PLACEHOLDER)
+
         if detail_id is not None:
-            combo.setCurrentIndex(combo.findData(detail_id))
+            _select_combo_data(combo, detail_id)
 
         spin = QSpinBox(self.parent)
         spin.setRange(1, 9999)
         spin.setValue(max(1, quantity))
+
         self.table.setCellWidget(row, 0, combo)
         self.table.setCellWidget(row, 1, spin)
 
@@ -166,13 +219,11 @@ class DetailRowsEditor:
         self.table.removeRow(row)
 
     def set_rows(self, rows: dict[int, int]) -> None:
-        """Заменяет содержимое таблицы сохранённым составом."""
         self.table.setRowCount(0)
         for detail_id, quantity in rows.items():
             self.add_row(detail_id, quantity)
 
     def get_rows(self) -> dict[int, int]:
-        """Собирает ID деталей и суммарные количества в словарь."""
         result: dict[int, int] = {}
         for row in range(self.table.rowCount()):
             combo = self.table.cellWidget(row, 0)
@@ -184,15 +235,18 @@ class DetailRowsEditor:
                 result[detail_id] = result.get(detail_id, 0) + spin.value()
         return result
 
+    def has_unselected_rows(self) -> bool:
+        return any(
+            isinstance(combo := self.table.cellWidget(row, 0), QComboBox) and combo.currentData() is None
+            for row in range(self.table.rowCount())
+        )
+
 
 class MaintenanceTypeDialog(QDialog):
-    """Создание и редактирование типа обслуживания."""
-
     def __init__(self, services: Services, current_user, item=None, parent=None):
         super().__init__(parent)
         self.services = services
         self.item = item
-
         self.ui = Ui_addMaintenanceType_dialog()
         self.ui.setupUi(self)
         self.ui.buttonBox.accepted.connect(self._on_save)
@@ -206,8 +260,8 @@ class MaintenanceTypeDialog(QDialog):
 
     def _on_save(self) -> None:
         name = self.ui.maintenanceType_lineEdit.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Внимание", "Укажите название типа")
+        if error := _validate_required(name, "название типа"):
+            QMessageBox.warning(self, "Внимание", error)
             return
 
         def action():
@@ -221,13 +275,10 @@ class MaintenanceTypeDialog(QDialog):
 
 
 class ManufacturerDialog(QDialog):
-    """Создание и редактирование производителя."""
-
     def __init__(self, services: Services, current_user, item=None, parent=None):
         super().__init__(parent)
         self.services = services
         self.item = item
-
         self.ui = Ui_addManufacturer_dialog()
         self.ui.setupUi(self)
         self.ui.buttonBox.accepted.connect(self._on_save)
@@ -241,8 +292,8 @@ class ManufacturerDialog(QDialog):
 
     def _on_save(self) -> None:
         name = self.ui.manufacturerName_lineEdit.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Внимание", "Укажите название производителя")
+        if error := _validate_required(name, "название производителя"):
+            QMessageBox.warning(self, "Внимание", error)
             return
 
         def action():
@@ -256,13 +307,10 @@ class ManufacturerDialog(QDialog):
 
 
 class LocomotiveModelDialog(QDialog):
-    """Создание и редактирование модели локомотива."""
-
     def __init__(self, services: Services, current_user, item=None, parent=None):
         super().__init__(parent)
         self.services = services
         self.item = item
-        # Путь файла, выбранного в этой сессии. None значит фото не менялось.
         self._picked_file: str | None = None
 
         self.ui = Ui_addLocomotiveModel_dialog()
@@ -286,20 +334,14 @@ class LocomotiveModelDialog(QDialog):
     def _load_data(self, item) -> None:
         self.ui.locomotiveCode_lineEdit.setText(str(item.code))
         self.ui.locomotiveModel_lineEdit.setText(item.name)
-        index = self.ui.maufacturer_comboBox.findData(item.manufacturer_id)
-        if index >= 0:
-            self.ui.maufacturer_comboBox.setCurrentIndex(index)
+        _select_combo_data(self.ui.maufacturer_comboBox, item.manufacturer_id)
         if item.image_path:
-            # Показываем только имя файла, полный путь пользователю не нужен.
             self.ui.filepath_lineEdit.setText(Path(item.image_path).name)
 
     def _on_pick_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Выбрать изображение", "", IMAGE_FILTER,
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Выбрать изображение", "", IMAGE_FILTER)
         if not path:
             return
-        # При сохранении файл будет скопирован в data/images.
         self._picked_file = path
         self.ui.filepath_lineEdit.setText(Path(path).name)
 
@@ -310,25 +352,7 @@ class LocomotiveModelDialog(QDialog):
             "name": self.ui.locomotiveModel_lineEdit.text().strip(),
         }
 
-    def _validate(self, fields: dict) -> bool:
-        if not fields["code"]:
-            QMessageBox.warning(self, "Внимание", "Укажите артикул")
-            return False
-        try:
-            int(fields["code"])
-        except ValueError:
-            QMessageBox.warning(self, "Внимание", "Артикул должен быть целым числом")
-            return False
-        if fields["manufacturer_id"] is None:
-            QMessageBox.warning(self, "Внимание", "Выберите производителя")
-            return False
-        if not fields["name"]:
-            QMessageBox.warning(self, "Внимание", "Укажите название модели")
-            return False
-        return True
-
     def _resolve_image_path(self, manufacturer_id: int, code: int) -> str | None:
-        """Путь к фото для записи в БД. Без выбора файла возвращает прежний."""
         if self._picked_file is None:
             return self.item.image_path if self.item else None
         manufacturer = self.services.manufacturers.get_or_raise(manufacturer_id)
@@ -336,11 +360,11 @@ class LocomotiveModelDialog(QDialog):
 
     def _on_save(self) -> None:
         fields = self._collect()
-        if not self._validate(fields):
+        if error := _validate_model_fields(fields):
+            QMessageBox.warning(self, "Внимание", error)
             return
-        code = int(fields["code"])
 
-        # Сначала файл, потом БД. Если фото не сохранилось, БД не трогаем.
+        code = int(fields["code"])
         try:
             new_image_path = self._resolve_image_path(fields["manufacturer_id"], code)
         except (OSError, ValueError) as exc:
@@ -363,15 +387,12 @@ class LocomotiveModelDialog(QDialog):
 
         if not _try_save(self, action):
             return
-        # Старое фото больше не используется.
         if old_image_path and old_image_path != new_image_path:
             delete_image(old_image_path)
         self.accept()
 
 
 class LocomotiveDialog(QDialog):
-    """Создание и редактирование локомотива."""
-
     def __init__(self, services: Services, current_user, item=None, parent=None):
         super().__init__(parent)
         self.services = services
@@ -397,12 +418,10 @@ class LocomotiveDialog(QDialog):
     def _load_data(self, item) -> None:
         self.ui.system_spinBox.setValue(int(item.system))
         self.ui.number_lineEdit.setText(str(item.number))
-        index = self.ui.locomotiveModel_comboBox.findData(item.locomotive_model_id)
-        if index >= 0:
-            self.ui.locomotiveModel_comboBox.setCurrentIndex(index)
-        if item.comment:
+        _select_combo_data(self.ui.locomotiveModel_comboBox, item.locomotive_model_id)
+        if getattr(item, "comment", None):
             self.ui.comment_textEdit.setPlainText(item.comment)
-        if item.kind:
+        if getattr(item, "kind", None):
             self.ui.type_lineEdit.setText(item.kind)
 
     def _collect(self) -> dict:
@@ -414,23 +433,10 @@ class LocomotiveDialog(QDialog):
             "kind": self.ui.type_lineEdit.text().strip(),
         }
 
-    def _validate(self, fields: dict) -> bool:
-        if not fields["number"]:
-            QMessageBox.warning(self, "Внимание", "Укажите номер локомотива")
-            return False
-        try:
-            int(fields["number"])
-        except ValueError:
-            QMessageBox.warning(self, "Внимание", "Номер должен быть целым числом")
-            return False
-        if fields["locomotive_model_id"] is None:
-            QMessageBox.warning(self, "Внимание", "Выберите модель")
-            return False
-        return True
-
     def _on_save(self) -> None:
         fields = self._collect()
-        if not self._validate(fields):
+        if error := _validate_locomotive_fields(fields):
+            QMessageBox.warning(self, "Внимание", error)
             return
 
         payload = {
@@ -452,11 +458,7 @@ class LocomotiveDialog(QDialog):
 
 
 class DetailDialog(QDialog):
-    """Создание и редактирование детали.
-
-    Производитель вводится текстом. Если такого имени нет, репозиторий
-    создаст нового производителя при сохранении детали.
-    """
+    """Создание и редактирование детали."""
 
     def __init__(self, services: Services, current_user, item=None, parent=None):
         super().__init__(parent)
@@ -468,11 +470,12 @@ class DetailDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self._on_save)
         self.ui.buttonBox.rejected.connect(self.reject)
 
+        # Производитель только выбирается из списка
+        self.ui.detailManufacturer_comboBox.setEditable(False)
         _fill_combo(
             self.ui.detailManufacturer_comboBox,
             self.services.manufacturers.list_all(),
             lambda man: man.name or NO_DATA,
-            data=lambda man: man.name,
         )
 
         if item is None:
@@ -486,54 +489,27 @@ class DetailDialog(QDialog):
         self.ui.detailName_lineEdit.setText(item.name)
         self.ui.detailCount_spinBox.setValue(item.quantity_in_stock)
         if item.manufacturer:
-            self.ui.detailManufacturer_comboBox.setCurrentText(item.manufacturer.name)
+            _select_combo_data(self.ui.detailManufacturer_comboBox, item.manufacturer_id)
 
     def _collect(self) -> dict:
         return {
             "code": self.ui.detailCode_lineEdit.text().strip(),
-            "manufacturer_name": self.ui.detailManufacturer_comboBox.currentText().strip(),
+            "manufacturer_id": self.ui.detailManufacturer_comboBox.currentData(),
             "name": self.ui.detailName_lineEdit.text().strip(),
             "quantity_in_stock": self.ui.detailCount_spinBox.text(),
         }
 
-    def _validate(self, fields: dict) -> bool:
-        if not fields["code"]:
-            QMessageBox.warning(self, "Внимание", "Укажите артикул")
-            return False
-        try:
-            int(fields["code"])
-        except ValueError:
-            QMessageBox.warning(self, "Внимание", "Артикул должен быть целым числом")
-            return False
-        if not fields["manufacturer_name"]:
-            QMessageBox.warning(self, "Внимание", "Укажите производителя")
-            return False
-        if not fields["name"]:
-            QMessageBox.warning(self, "Внимание", "Укажите наименование")
-            return False
-        try:
-            quantity = int(fields["quantity_in_stock"] or "0")
-        except ValueError:
-            QMessageBox.warning(self, "Внимание", "Остаток должен быть целым числом")
-            return False
-        if quantity < 0:
-            QMessageBox.warning(self, "Внимание", "Остаток не может быть отрицательным")
-            return False
-        return True
-
     def _on_save(self) -> None:
         fields = self._collect()
-        if not self._validate(fields):
+        if error := _validate_detail_fields(fields):
+            QMessageBox.warning(self, "Внимание", error)
             return
 
-        manufacturer = self.services.manufacturers.get_or_create_by_name(
-            fields["manufacturer_name"]
-        )
         payload = {
             "code": int(fields["code"]),
-            "manufacturer_id": manufacturer.id,
+            "manufacturer_id": fields["manufacturer_id"],
             "name": fields["name"],
-            "quantity_in_stock": int(fields["quantity_in_stock"] or "0"),
+            "quantity_in_stock": int(fields["quantity_in_stock"]),
         }
 
         def action():
@@ -547,8 +523,6 @@ class DetailDialog(QDialog):
 
 
 class MaintenanceDialog(QDialog):
-    """Создание и редактирование листа обслуживания."""
-
     def __init__(self, services: Services, current_user, item=None, parent=None):
         super().__init__(parent)
         self.services = services
@@ -583,23 +557,16 @@ class MaintenanceDialog(QDialog):
         if item is None:
             self.setWindowTitle("Новый лист обслуживания")
             self.ui.addMaintenanceDate_dateEdit.setDate(QDate.currentDate())
-            # Минимум — полгода назад.
             min_date = QDate.currentDate().addMonths(-6)
-            self.ui.addMaintenanceDate_dateEdit.setMinimumDateTime(
-                QDateTime(min_date, QTime(9, 40, 1))
-            )
+            self.ui.addMaintenanceDate_dateEdit.setMinimumDateTime(QDateTime(min_date, QTime(9, 40, 1)))
             self.ui.addMaintenanceDate_dateEdit.setMinimumDate(min_date)
         else:
             self.setWindowTitle("Редактирование листа обслуживания")
             self._load_data(item)
 
     def _load_data(self, item) -> None:
-        index = self.ui.addMaintenanceLoco_comboBox.findData(item.locomotive_id)
-        if index >= 0:
-            self.ui.addMaintenanceLoco_comboBox.setCurrentIndex(index)
-        index = self.ui.addMaintenanceType_comboBox.findData(item.maintenance_type_id)
-        if index >= 0:
-            self.ui.addMaintenanceType_comboBox.setCurrentIndex(index)
+        _select_combo_data(self.ui.addMaintenanceLoco_comboBox, item.locomotive_id)
+        _select_combo_data(self.ui.addMaintenanceType_comboBox, item.maintenance_type_id)
         if item.description:
             self.ui.addMaintenanceComment_textEdit.setPlainText(item.description)
         if item.date is not None:
@@ -612,33 +579,16 @@ class MaintenanceDialog(QDialog):
             "maintenance_type_id": self.ui.addMaintenanceType_comboBox.currentData(),
             "description": self.ui.addMaintenanceComment_textEdit.toPlainText().strip(),
             "date": datetime.combine(
-                self.ui.addMaintenanceDate_dateEdit.date().toPython(),
-                time.min,
-                tzinfo=UTC,
+                self.ui.addMaintenanceDate_dateEdit.date().toPython(), time.min, tzinfo=UTC
             ),
         }
 
-    def _validate(self, _fields: dict) -> bool:
-        if self.ui.addMaintenanceLoco_comboBox.currentData() is None:
-            QMessageBox.warning(self, "Внимание", "Выберите локомотив")
-            return False
-        if self.ui.addMaintenanceType_comboBox.currentData() is None:
-            QMessageBox.warning(self, "Внимание", "Выберите тип обслуживания")
-            return False
-        return True
-
-    def _payload(self, fields: dict) -> dict:
-        # user_id проставляется только при создании. При правке не трогаем.
-        if self.item is None:
-            return {**fields, "user_id": self.current_user.id}
-        return fields
-
     def _save(self, fields: dict, allow_negative: bool = False) -> dict | None:
-        """Сохраняет лист. Возвращает недостачи или None при ошибке."""
+        payload = {**fields, "user_id": self.current_user.id} if self.item is None else fields
         try:
             return self.services.maintenances.save_with_details(
                 maintenance_id=self.item.id if self.item else None,
-                fields=self._payload(fields),
+                fields=payload,
                 rows=self.detail_rows.get_rows(),
                 allow_negative_stock=allow_negative,
             )
@@ -646,19 +596,7 @@ class MaintenanceDialog(QDialog):
             QMessageBox.critical(self, "Ошибка", "Запись не найдена")
             return None
 
-    def _on_save(self) -> None:
-        fields = self._collect()
-        if not self._validate(fields):
-            return
-
-        deficits = self._save(fields)
-        if deficits is None:
-            return
-        if not deficits:
-            self.accept()
-            return
-
-        # Есть нехватка на складе. Спрашиваем разрешение на минус.
+    def _confirm_negative_stock(self, deficits: dict[int, int]) -> bool:
         details_by_id = {d.id: d for d in self.details}
         lines = []
         for detail_id, deficit in deficits.items():
@@ -666,32 +604,46 @@ class MaintenanceDialog(QDialog):
             label = _detail_label(detail) if detail else f"Деталь {detail_id}"
             lines.append(f"{label}: не хватает {deficit} шт.")
 
-        reply = QMessageBox.warning(
-            self,
-            "Недостаточно деталей",
+        msg = (
             f"На складе недостаточно деталей:\n{chr(10).join(lines)}"
-            "\nПродолжить и разрешить отрицательный остаток?",
+            "\nПродолжить и разрешить отрицательный остаток?"
+        )
+        reply = QMessageBox.warning(
+            self, "Недостаточно деталей", msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        return reply == QMessageBox.StandardButton.Yes
+
+    def _save_and_handle_deficits(self, fields: dict) -> bool:
+        deficits = self._save(fields)
+        if deficits is None:
+            return False
+        if not deficits:
+            return True
+        if not self._confirm_negative_stock(deficits):
+            return False
+        return self._save(fields, allow_negative=True) is not None
+
+    def _on_save(self) -> None:
+        fields = self._collect()
+        if error := _validate_maintenance_fields(fields):
+            QMessageBox.warning(self, "Внимание", error)
+            return
+        if self.detail_rows.has_unselected_rows():
+            QMessageBox.warning(self, "Внимание", "В одной из строк не выбрана деталь")
             return
 
-        if self._save(fields, allow_negative=True) is not None:
+        if self._save_and_handle_deficits(fields):
             self.accept()
 
 
 class _UserDialogBase(QDialog):
-    """Общая основа для создания и редактирования пользователя.
-
-    Разделяет одну и ту же форму. Наследники переопределяют только
-    валидацию и действие сохранения.
-    """
+    require_password: bool = False
 
     def __init__(self, services: Services, parent=None):
         super().__init__(parent)
         self.services = services
-
         self.ui = Ui_userEdit_dialog()
         self.ui.setupUi(self)
         self.ui.buttonBox.accepted.connect(self._on_save)
@@ -708,22 +660,23 @@ class _UserDialogBase(QDialog):
             "is_active": not self.ui.disabled_checkBox.isChecked(),
         }
 
-    def _validate(self, fields: dict) -> bool:
-        if not fields["login"]:
-            QMessageBox.warning(self, "Внимание", "Логин не может быть пустым")
-            return False
-        if fields["password"] != fields["password_confirm"]:
-            QMessageBox.warning(self, "Внимание", "Пароли не совпадают")
-            return False
-        return True
+    def _validate(self, fields: dict) -> str | None:
+        if error := _validate_required(fields["login"], "Логин"): return error
+        if self.require_password and not fields["password"]:
+            return "Пароль не может быть пустым"
+        if fields["password"] and fields["password"] != fields["password_confirm"]:
+            return "Пароли не совпадают"
+        return None
 
     def _save_action(self, fields: dict) -> None:
         raise NotImplementedError
 
     def _on_save(self) -> None:
         fields = self._fields()
-        if not self._validate(fields):
+        if error := self._validate(fields):
+            QMessageBox.warning(self, "Внимание", error)
             return
+
         try:
             self._save_action(fields)
         except LoginAlreadyTakenError:
@@ -742,11 +695,6 @@ class _UserDialogBase(QDialog):
 
 
 class UserEditDialog(_UserDialogBase):
-    """Редактирование существующего пользователя.
-
-    В обычном режиме админ и активность скрыты, в admin_mode доступны.
-    """
-
     def __init__(self, services: Services, target_user, admin_mode: bool = False, parent=None):
         super().__init__(services, parent)
         self.user = target_user
@@ -756,24 +704,11 @@ class UserEditDialog(_UserDialogBase):
             self.ui.isAdmin_checkBox.setVisible(False)
             self.ui.disabled_checkBox.setVisible(False)
 
-        self._load_data()
-
-    def _load_data(self) -> None:
         self.ui.login_lineEdit.setText(self.user.login)
         self.ui.firstName_lineEdit.setText(self.user.first_name or "")
         self.ui.lastName_lineEdit.setText(self.user.last_name or "")
         self.ui.isAdmin_checkBox.setChecked(bool(self.user.is_admin))
         self.ui.disabled_checkBox.setChecked(not self.user.is_active)
-
-    def _validate(self, fields: dict) -> bool:
-        if not fields["login"]:
-            QMessageBox.warning(self, "Внимание", "Логин не может быть пустым")
-            return False
-        # При редактировании пароль необязателен.
-        if fields["password"] and fields["password"] != fields["password_confirm"]:
-            QMessageBox.warning(self, "Внимание", "Пароли не совпадают")
-            return False
-        return True
 
     def _save_action(self, fields: dict) -> None:
         self.services.users.update(
@@ -788,21 +723,13 @@ class UserEditDialog(_UserDialogBase):
 
 
 class UserCreateDialog(_UserDialogBase):
-    """Создание нового пользователя. Пароль обязателен."""
+    require_password = True
 
     def __init__(self, services: Services, current_user, parent=None):
         super().__init__(services, parent)
         self.setWindowTitle("Новый пользователь")
         self.ui.newPass_label.setText("Пароль")
         self.ui.newPassConfirm_label.setText("Подтвердите пароль")
-
-    def _validate(self, fields: dict) -> bool:
-        if not super()._validate(fields):
-            return False
-        if not fields["password"]:
-            QMessageBox.warning(self, "Внимание", "Пароль не может быть пустым")
-            return False
-        return True
 
     def _save_action(self, fields: dict) -> None:
         self.services.users.create(
@@ -816,8 +743,6 @@ class UserCreateDialog(_UserDialogBase):
 
 
 class UserManagementDialog(QDialog):
-    """Окно со списком пользователей и операциями над ними."""
-
     HEADERS = ("ID", "Логин", "Имя", "Фамилия", "Админ", "Отключен")
 
     def __init__(self, services: Services, current_user, parent=None):
@@ -859,9 +784,7 @@ class UserManagementDialog(QDialog):
 
     def _selected(self):
         row = self.ui.users_tableWidget.currentRow()
-        if row < 0 or row >= len(self._users):
-            return None
-        return self._users[row]
+        return self._users[row] if 0 <= row < len(self._users) else None
 
     def _on_add(self) -> None:
         dialog = UserCreateDialog(self.services, self.current_user, parent=self)
@@ -869,8 +792,7 @@ class UserManagementDialog(QDialog):
             self._reload()
 
     def _on_edit(self) -> None:
-        user = self._selected()
-        if user is None:
+        if not (user := self._selected()):
             QMessageBox.information(self, "Внимание", "Выберите пользователя")
             return
         dialog = UserEditDialog(self.services, user, admin_mode=True, parent=self)
@@ -878,8 +800,7 @@ class UserManagementDialog(QDialog):
             self._reload()
 
     def _on_delete(self) -> None:
-        user = self._selected()
-        if user is None:
+        if not (user := self._selected()):
             QMessageBox.information(self, "Внимание", "Выберите пользователя")
             return
         if user.id == self.current_user.id:
@@ -897,10 +818,7 @@ class UserManagementDialog(QDialog):
         try:
             self.services.users.delete(user.id)
         except LastActiveAdminError:
-            QMessageBox.warning(
-                self, "Внимание",
-                "Нельзя удалить последнего активного администратора",
-            )
+            QMessageBox.warning(self, "Внимание", "Нельзя удалить последнего активного администратора")
             return
         except EntityInUseError as exc:
             QMessageBox.warning(self, "Внимание", str(exc))
@@ -913,18 +831,13 @@ class UserManagementDialog(QDialog):
 
 
 class SupplyDialog(QDialog):
-    """Создание и редактирование прихода деталей на склад.
-
-    Один supply_number это одна партия, несколько строк Supply.
-    Номер новой партии назначается сервисом автоматически.
-    """
-
-    def __init__(self, services: Services, current_user,
-                 supply_number: int | None = None, parent=None):
+    def __init__(
+        self, services: Services, current_user,
+        supply_number: int | None = None, parent=None
+    ):
         super().__init__(parent)
         self.services = services
         self.current_user = current_user
-        # None — новая партия. Число — редактирование существующей.
         self.supply_number = supply_number
 
         self.ui = Ui_addSupply_dialog()
@@ -950,6 +863,10 @@ class SupplyDialog(QDialog):
             )
 
     def _on_save(self) -> None:
+        if self.detail_rows.has_unselected_rows():
+            QMessageBox.warning(self, "Внимание", "В одной из строк не выбрана деталь")
+            return
+
         rows = self.detail_rows.get_rows()
         if not rows:
             QMessageBox.warning(self, "Внимание", "Добавьте хотя бы одну деталь")
