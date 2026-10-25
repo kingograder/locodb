@@ -77,7 +77,7 @@ class Detail(Base):
     """Детали"""
     __tablename__ = "details"
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[int]
+    code: Mapped[str] = mapped_column(String(16))
     name: Mapped[str] = mapped_column(LowercaseInputString(255))
     quantity_in_stock: Mapped[int]
     manufacturer: Mapped["Manufacturer"] = relationship(back_populates="details")
