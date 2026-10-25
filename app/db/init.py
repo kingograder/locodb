@@ -18,16 +18,11 @@ def _create_tables(engine) -> None:
 
 
 def init_db(engine, session_factory) -> None:
-    """Готовит БД к работе: создаёт таблицы и первого админа admin/admin.
-
-    Если пользователь admin уже существует — просто пропускает создание,
-    чтобы повторный запуск приложения не падал с ошибкой.
-    """
     _create_tables(engine)
     _ensure_default_admin(session_factory)
-    # Производители создаются в любом случае при старте программы, это проблема надо будет исправить
     _create_manufacturers_on_startup(session_factory)
     _create_maintenance_type_on_startup(session_factory)
+
 
 def _ensure_default_admin(session_factory) -> None:
     """Создаёт стартового администратора admin/admin, если его ещё нет."""
@@ -45,6 +40,7 @@ def _ensure_default_admin(session_factory) -> None:
     except LoginAlreadyTakenError:
         logger.info("Пользователь admin уже существует, пропускаем создание")
 
+
 def _create_manufacturers_on_startup(session_factory) -> None:
     manufacturers = ManufacturerRepository(session_factory)
     if not manufacturers.get_by_name("Roco"):
@@ -57,6 +53,7 @@ def _create_manufacturers_on_startup(session_factory) -> None:
             logger.info("Созданы производители")
         except SQLAlchemyError as e:
             logger.info(f"Ошибка при заполнении номенклатуры производителей: {e}")
+
 
 def _create_maintenance_type_on_startup(session_factory) -> None:
     maintenance_types = MaintenanceTypeRepository(session_factory)
