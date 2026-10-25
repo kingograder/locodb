@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-Вкладки со списками справочников.
-"""
 
 import logging
-from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Protocol
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap, QPixmapCache
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -48,8 +45,10 @@ from app.widgets.ui_base_tab_widget import Ui_baseTab_widget
 logger = logging.getLogger(__name__)
 
 NO_DATA = "—"
-PHOTO_HEIGHT = 64        # одинаковая высота превью — ровные строки таблицы
-PHOTO_MAX_WIDTH = 128    # предел для панорам — не расползаться на всю таблицу
+PHOTO_HEIGHT = 64
+PHOTO_MAX_WIDTH = 128
+ROW_HEIGHT_WITH_PHOTO = PHOTO_HEIGHT + 8
+ROW_HEIGHT_TEXT_ONLY = 28
 
 WARNING_TITLE = "Внимание"
 ERROR_TITLE = "Ошибка"
@@ -57,41 +56,55 @@ CONFIRM_TITLE = "Подтверждение"
 
 
 class CellRenderer(Protocol):
-    """Способ отрисовать одну ячейку таблицы по её значению."""
-
-    def render(self, table: QTableWidget, row: int, col: int, value: Any) -> None: ...
+    def ensure_cell(self, table: QTableWidget, row: int, col: int) -> Any: ...
+    def apply(self, cell: Any, value: Any) -> None: ...
 
 
 class TextCellRenderer:
-    """Ячейка-текст: None превращается в NO_DATA."""
+    def ensure_cell(self, table: QTableWidget, row: int, col: int) -> QTableWidgetItem:
+        cell = table.item(row, col)
+        if cell is None:
+            cell = QTableWidgetItem()
+            table.setItem(row, col, cell)
+        return cell
 
-    def render(self, table: QTableWidget, row: int, col: int, value: Any) -> None:
-        text = NO_DATA if value is None else str(value)
-        table.setItem(row, col, QTableWidgetItem(text))
+    def apply(self, cell: QTableWidgetItem, value: Any) -> None:
+        cell.setText(NO_DATA if value is None else str(value))
 
 
 class PhotoCellRenderer:
-    """Ячейка-превью: QLabel с картинкой или заглушкой NO_DATA.
+    """Ячейка-превью с кэшем пиксмапов и переиспользованием QLabel.
 
-    Отвечает только за загрузку файла и масштабирование. Структуры
-    таблицы не знает — ей передают table/row/col как параметры.
+    Переиспользование важно для отзывчивости: при сортировке таблица
+    не создаёт QLabel заново, а обновляет pixmap в существующем. Кэш
+    избавляет от повторного чтения файла с диска — пути уникальны
+    (UUID-суффикс при сохранении), поэтому кэш не может отдать старое
+    фото вместо нового.
     """
 
     def __init__(self, height: int = PHOTO_HEIGHT, max_width: int = PHOTO_MAX_WIDTH):
         self._height = height
         self._max_width = max_width
+        self._cache: dict[str | None, QPixmap | None] = {}
 
-    def render(self, table: QTableWidget, row: int, col: int, value: Any) -> None:
-        table.setCellWidget(row, col, self._build_label(value))
+    def clear_cache(self) -> None:
+        self._cache.clear()
 
-    def _build_label(self, path: str | None) -> QLabel:
-        label = self._create_label()
-        pixmap = self._load_pixmap(path)
+    def ensure_cell(self, table: QTableWidget, row: int, col: int) -> QLabel:
+        cell = table.cellWidget(row, col)
+        if cell is None:
+            cell = self._create_label()
+            table.setCellWidget(row, col, cell)
+        return cell
+
+    def apply(self, cell: QLabel, value: Any) -> None:
+        pixmap = self._cached_pixmap(value)
         if pixmap is None:
-            label.setText(NO_DATA)
+            cell.clear()
+            cell.setText(NO_DATA)
         else:
-            label.setPixmap(pixmap)
-        return label
+            cell.setText("")
+            cell.setPixmap(pixmap)
 
     def _create_label(self) -> QLabel:
         label = QLabel()
@@ -99,6 +112,13 @@ class PhotoCellRenderer:
         # Клик по картинке не перехватываем — пусть выделяется строка таблицы.
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         return label
+
+    def _cached_pixmap(self, path: str | None) -> QPixmap | None:
+        if path in self._cache:
+            return self._cache[path]
+        pixmap = self._load_pixmap(path)
+        self._cache[path] = pixmap
+        return pixmap
 
     def _load_pixmap(self, path: str | None) -> QPixmap | None:
         file_path = self._resolve_path(path)
@@ -164,45 +184,79 @@ class PhotoCellRenderer:
 
 @dataclass(frozen=True)
 class Column:
-    """Заголовок, рендерер ячейки и getter значения для одной колонки."""
+    """Заголовок, рендерер ячейки, getter значения и параметры сортировки.
+
+    getter возвращает значение для отображения (может быть None).
+    sort_key — ключ сортировки; если None, используется getter (подходит,
+    когда getter уже возвращает сравнимое значение без None). Если типы
+    для отображения и сортировки различаются (артикул как «1234» vs 1234),
+    задаётся явный sort_key. sortable=False отключает сортировку по колонке.
+    """
 
     title: str
     renderer: CellRenderer
     getter: Callable[[Any], Any]
+    sort_key: Callable[[Any], Any] | None = None
+    sortable: bool = True
+
+    def effective_sort_key(self) -> Callable[[Any], Any] | None:
+        if not self.sortable:
+            return None
+        return self.sort_key if self.sort_key is not None else self.getter
 
 
 class TableRenderer:
     """Рисует таблицу по списку Column и списку записей.
 
-    Не знает, откуда пришли записи и что они собой представляют —
-    только делегирует значение каждой ячейки её рендереру.
+    Переиспользует ячейки между вызовами (ensure_cell + apply) и
+    группирует перерисовку через setUpdatesEnabled — это делает
+    сортировку быстрой: при повторном рендере не уничтожаются QLabel
+    и QTableWidgetItem, не пересчитываются высоты строк.
     """
 
     def __init__(self, columns: list[Column]):
         self._columns = columns
 
     def render(self, table: QTableWidget, items: list) -> None:
-        self._configure(table, row_count=len(items))
-        for row, item in enumerate(items):
-            self._render_row(table, row, item)
-        table.resizeRowsToContents()
+        table.setUpdatesEnabled(False)
+        try:
+            self._ensure_structure(table, len(items))
+            for row, item in enumerate(items):
+                self._render_row(table, row, item)
+        finally:
+            table.setUpdatesEnabled(True)
 
-    def _configure(self, table: QTableWidget, row_count: int) -> None:
-        table.setColumnCount(len(self._columns))
-        table.setHorizontalHeaderLabels([c.title for c in self._columns])
-        table.setRowCount(row_count)
+    def _ensure_structure(self, table: QTableWidget, row_count: int) -> None:
+        if table.columnCount() != len(self._columns):
+            table.setColumnCount(len(self._columns))
+            table.setHorizontalHeaderLabels([c.title for c in self._columns])
+        if table.rowCount() != row_count:
+            table.setRowCount(row_count)
 
     def _render_row(self, table: QTableWidget, row: int, item: Any) -> None:
         for col, column in enumerate(self._columns):
-            column.renderer.render(table, row, col, column.getter(item))
+            cell = column.renderer.ensure_cell(table, row, col)
+            column.renderer.apply(cell, column.getter(item))
 
 
 _TEXT_RENDERER = TextCellRenderer()
 _PHOTO_RENDERER = PhotoCellRenderer()
 
 
+def _sorted_by(getter: Callable[[Any], Any], default: Any) -> Callable[[Any], Any]:
+    """None-безопасный ключ сортировки: default, если getter вернул None.
+
+    Нужен, когда getter возвращает None (для NO_DATA), а Python 3 не
+    умеет сравнивать None со str/int/datetime. default должен быть
+    того же типа, что непустые значения getter-а.
+    """
+    def sort_key(item):
+        value = getter(item)
+        return default if value is None else value
+    return sort_key
+
+
 def _locomotive_manufacturer_name(item) -> str | None:
-    """Имя производителя модели локомотива; None, если связь не заполнена."""
     model = item.model
     if model is None or model.manufacturer is None:
         return None
@@ -215,6 +269,10 @@ def _locomotive_model_image_path(item) -> str | None:
 
 def _locomotive_model_code(item) -> str | None:
     return str(item.model.code) if item.model else None
+
+
+def _locomotive_model_code_int(item) -> int | None:
+    return item.model.code if item.model else None
 
 
 def _locomotive_model_name(item) -> str | None:
@@ -251,21 +309,8 @@ def _batch_created_at(item) -> str:
     return item["created_at"].strftime("%d.%m.%Y %H:%M")
 
 
-class _TabBaseMeta(type(QWidget), ABCMeta):
-    """Метакласс-мост между Shiboken и ABC.
-
-    QWidget из PySide6 использует Shiboken.ObjectType, ABC — ABCMeta.
-    Оба наследуют type, но не друг друга, поэтому Python не может
-    вывести общий метакласс и падает с TypeError. Пустой наследник
-    обоих снимает конфликт, не добавляя поведения.
-    """
-
-
-class _TabBase(QWidget, metaclass=_TabBaseMeta):
-    """Каркас вкладки-справочника: таблица, кнопки, выбор, reload.
-
-    Не знает ни источника данных, ни типа строки — только то, что
-    умеет показать таблицу по COLUMN_CONFIG и обработать клики.
+class _TabBase(QWidget):
+    """Каркас вкладки-справочника: таблица, кнопки, выбор, reload, сортировка.
 
     Наследнику обязательно задать:
         COLUMN_CONFIG      — список Column
@@ -294,6 +339,12 @@ class _TabBase(QWidget, metaclass=_TabBaseMeta):
 
         self._table_renderer = TableRenderer(self.COLUMN_CONFIG)
         self._items: list = []
+        self._sorted_column: int | None = None
+        self._sort_descending = False
+
+        self._sort_timer = QTimer(self)
+        self._sort_timer.setSingleShot(True)
+        self._sort_timer.timeout.connect(self._apply_sort_and_redraw)
 
         self._configure_table()
         self._setup_buttons()
@@ -304,7 +355,25 @@ class _TabBase(QWidget, metaclass=_TabBaseMeta):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header.sectionClicked.connect(self._on_header_clicked)
+
+        # Фиксированная высота строки убирает resizeRowsToContents из
+        # горячего пути: пересчёт высот на каждый клик по заголовку —
+        # самая дорогая операция QTableWidget.
+        vheader = table.verticalHeader()
+        vheader.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        vheader.setDefaultSectionSize(self._row_height())
+
+    def _row_height(self) -> int:
+        has_photo = any(
+            isinstance(c.renderer, PhotoCellRenderer) for c in self.COLUMN_CONFIG
+        )
+        return ROW_HEIGHT_WITH_PHOTO if has_photo else ROW_HEIGHT_TEXT_ONLY
 
     def _setup_buttons(self) -> None:
         self.ui.addBase_button.setText(self.ADD_LABEL)
@@ -317,18 +386,52 @@ class _TabBase(QWidget, metaclass=_TabBaseMeta):
 
     def reload(self) -> None:
         self._items = self._reload_items()
-        QPixmapCache.clear()
+        _PHOTO_RENDERER.clear_cache()
+        self._apply_sort()
         self._table_renderer.render(self.ui.base_table, self._items)
 
+    def _on_header_clicked(self, column: int) -> None:
+        if self.COLUMN_CONFIG[column].effective_sort_key() is None:
+            return
+        if self._sorted_column == column:
+            self._sort_descending = not self._sort_descending
+        else:
+            self._sorted_column = column
+            self._sort_descending = False
+        # Клики в серии коалесцируются: несколько нажатий подряд
+        # сливаются в один рендер после последнего.
+        self._sort_timer.start(0)
+
+    def _apply_sort_and_redraw(self) -> None:
+        self._apply_sort()
+        self._table_renderer.render(self.ui.base_table, self._items)
+        self.ui.base_table.clearSelection()
+        self._update_sort_indicator()
+
+    def _apply_sort(self) -> None:
+        if self._sorted_column is None:
+            return
+        sort_key = self.COLUMN_CONFIG[self._sorted_column].effective_sort_key()
+        if sort_key is None:
+            return
+        self._items.sort(key=sort_key, reverse=self._sort_descending)
+
+    def _update_sort_indicator(self) -> None:
+        if self._sorted_column is None:
+            return
+        order = (Qt.SortOrder.DescendingOrder if self._sort_descending
+                 else Qt.SortOrder.AscendingOrder)
+        self.ui.base_table.horizontalHeader().setSortIndicator(
+            self._sorted_column, order
+        )
+
     def _selected_item(self):
-        """Возвращает выбранную запись или None."""
         row = self.ui.base_table.currentRow()
         if row < 0 or row >= len(self._items):
             return None
         return self._items[row]
 
     def _require_selection(self):
-        """Возвращает выбранную запись; при пустом выборе предупреждает и None."""
         item = self._selected_item()
         if item is None:
             QMessageBox.information(self, WARNING_TITLE, self.EMPTY_SELECTION_MESSAGE)
@@ -358,34 +461,25 @@ class _TabBase(QWidget, metaclass=_TabBaseMeta):
         )
         return reply == QMessageBox.StandardButton.Yes
 
-    @abstractmethod
-    def _reload_items(self) -> list: ...
+    def _reload_items(self) -> list:
+        raise NotImplementedError
 
-    @abstractmethod
-    def _open_dialog_for_edit(self, item) -> None: ...
+    def _open_dialog_for_edit(self, item) -> None:
+        raise NotImplementedError
 
-    @abstractmethod
-    def _delete(self, item) -> None: ...
+    def _delete(self, item) -> None:
+        raise NotImplementedError
 
-    @abstractmethod
-    def _delete_prompt(self, item) -> str: ...
+    def _delete_prompt(self, item) -> str:
+        raise NotImplementedError
 
 
 class BaseTab(_TabBase):
-    """Вкладка справочника, строки — ORM-объекты из репозитория.
-
-    Наследнику задать:
-        DIALOG_CLASS       — класс диалога
-        NOT_FOUND_ERROR    — исключение "запись не найдена"
-        COLUMN_CONFIG      — колонки
-        _repo()            — репозиторий вкладки
-        _delete_prompt(item) — текст вопроса при удалении
-    """
+    """Вкладка справочника, строки — ORM-объекты из репозитория."""
 
     NOT_FOUND_ERROR: ClassVar[type[BaseException]]
 
     def _repo(self):
-        """Репозиторий вкладки. Переопределяется в наследниках."""
         raise NotImplementedError
 
     def _reload_items(self) -> list:
@@ -412,16 +506,7 @@ class BaseTab(_TabBase):
 
 
 class BatchTab(_TabBase):
-    """Вкладка, строки — словари партий (групп записей).
-
-    Наследнику задать:
-        DIALOG_CLASS       — класс диалога
-        COLUMN_CONFIG      — колонки (getter принимает dict)
-        _reload_items()    — как собрать партии
-        _open_dialog_for_edit(item) — как открыть диалог по партии
-        _delete(item)      — как удалить партию
-        _delete_prompt(item) — текст вопроса при удалении
-    """
+    """Вкладка, строки — словари партий (групп записей)."""
 
 
 class MaintenanceTypesTab(BaseTab):
@@ -465,9 +550,11 @@ class LocomotiveModelsTab(BaseTab):
     NOT_FOUND_ERROR = LocomotiveModelNotFoundError
 
     COLUMN_CONFIG = [
-        Column("Фото",          _PHOTO_RENDERER, lambda item: item.image_path),
+        Column("Фото",          _PHOTO_RENDERER, lambda item: item.image_path,
+                                                 sortable=False),
         Column("Производитель", _TEXT_RENDERER,  lambda item: item.manufacturer.name),
-        Column("Артикул",       _TEXT_RENDERER,  lambda item: str(item.code)),
+        Column("Артикул",       _TEXT_RENDERER,  lambda item: str(item.code),
+                                                 lambda item: item.code),
         Column("Модель",        _TEXT_RENDERER,  lambda item: item.name),
     ]
 
@@ -482,21 +569,24 @@ class LocomotiveModelsTab(BaseTab):
 
 
 class LocomotivesTab(BaseTab):
-    """Вкладка «Локомотивы».
-
-    Фото живёт в модели, а не в локомотиве — берём через связь.
-    """
+    """Вкладка «Локомотивы». Фото живёт в модели, а не в локомотиве."""
 
     DIALOG_CLASS = LocomotiveDialog
     NOT_FOUND_ERROR = LocomotiveNotFoundError
 
     COLUMN_CONFIG = [
-        Column("Система",       _TEXT_RENDERER,  lambda item: str(item.system)),
-        Column("Номер",         _TEXT_RENDERER,  lambda item: str(item.number)),
-        Column("Фото",          _PHOTO_RENDERER, _locomotive_model_image_path),
-        Column("Производитель", _TEXT_RENDERER,  _locomotive_manufacturer_name),
-        Column("Артикул",       _TEXT_RENDERER,  _locomotive_model_code),
-        Column("Модель",        _TEXT_RENDERER,  _locomotive_model_name),
+        Column("Система",       _TEXT_RENDERER,  lambda item: str(item.system),
+                                                 lambda item: item.system),
+        Column("Номер",         _TEXT_RENDERER,  lambda item: str(item.number),
+                                                 lambda item: item.number),
+        Column("Фото",          _PHOTO_RENDERER, _locomotive_model_image_path,
+                                                 sortable=False),
+        Column("Производитель", _TEXT_RENDERER,  _locomotive_manufacturer_name,
+                                                 _sorted_by(_locomotive_manufacturer_name, "")),
+        Column("Артикул",       _TEXT_RENDERER,  _locomotive_model_code,
+                                                 _sorted_by(_locomotive_model_code_int, 0)),
+        Column("Модель",        _TEXT_RENDERER,  _locomotive_model_name,
+                                                 _sorted_by(_locomotive_model_name, "")),
     ]
 
     def _repo(self):
@@ -516,10 +606,13 @@ class DetailsTab(BaseTab):
     NOT_FOUND_ERROR = DetailNotFoundError
 
     COLUMN_CONFIG = [
-        Column("Производитель", _TEXT_RENDERER, _detail_manufacturer_name),
-        Column("Артикул",       _TEXT_RENDERER, lambda item: str(item.code)),
+        Column("Производитель", _TEXT_RENDERER, _detail_manufacturer_name,
+                                                _sorted_by(_detail_manufacturer_name, "")),
+        Column("Артикул",       _TEXT_RENDERER, lambda item: str(item.code),
+                                                lambda item: item.code),
         Column("Наименование",  _TEXT_RENDERER, lambda item: item.name),
-        Column("Остаток",       _TEXT_RENDERER, lambda item: str(item.quantity_in_stock)),
+        Column("Остаток",       _TEXT_RENDERER, lambda item: str(item.quantity_in_stock),
+                                                lambda item: item.quantity_in_stock),
     ]
 
     def _repo(self):
@@ -537,11 +630,16 @@ class MaintenancesTab(BaseTab):
     DELETE_LABEL = "Пометить на удаление"
 
     COLUMN_CONFIG = [
-        Column("Локомотив",   _TEXT_RENDERER, _maintenance_locomotive_label),
-        Column("Тип",         _TEXT_RENDERER, _maintenance_type_name),
+        Column("Локомотив",   _TEXT_RENDERER, _maintenance_locomotive_label,
+                                              _sorted_by(_maintenance_locomotive_label, "")),
+        Column("Тип",         _TEXT_RENDERER, _maintenance_type_name,
+                                              _sorted_by(_maintenance_type_name, "")),
         Column("Комментарий", _TEXT_RENDERER, lambda item: item.description or ""),
-        Column("Автор",       _TEXT_RENDERER, _maintenance_author_name),
-        Column("Дата",        _TEXT_RENDERER, _maintenance_date),
+        Column("Автор",       _TEXT_RENDERER, _maintenance_author_name,
+                                              _sorted_by(_maintenance_author_name, "")),
+        Column("Дата",        _TEXT_RENDERER, _maintenance_date,
+                                              _sorted_by(lambda item: item.date,
+                                                         datetime.min)),
     ]
 
     def _repo(self):
@@ -556,7 +654,6 @@ class SuppliesTab(BatchTab):
 
     В БД каждая деталь — отдельная запись Supply, объединённая номером
     supply_number. Таблица показывает партии: одна строка = один приход.
-    Getter-ы COLUMN_CONFIG принимают словарь партии, а не ORM-объект.
     """
 
     DIALOG_CLASS = SupplyDialog
@@ -566,10 +663,14 @@ class SuppliesTab(BatchTab):
     EMPTY_SELECTION_MESSAGE = "Выберите приход"
 
     COLUMN_CONFIG = [
-        Column("Номер",   _TEXT_RENDERER, _batch_number),
-        Column("Дата",    _TEXT_RENDERER, _batch_created_at),
-        Column("Деталей", _TEXT_RENDERER, lambda item: str(item["positions"])),
-        Column("Всего",   _TEXT_RENDERER, lambda item: str(item["total_quantity"])),
+        Column("Номер",   _TEXT_RENDERER, _batch_number,
+                                          lambda item: item["number"]),
+        Column("Дата",    _TEXT_RENDERER, _batch_created_at,
+                                          lambda item: item["created_at"]),
+        Column("Деталей", _TEXT_RENDERER, lambda item: str(item["positions"]),
+                                          lambda item: item["positions"]),
+        Column("Всего",   _TEXT_RENDERER, lambda item: str(item["total_quantity"]),
+                                          lambda item: item["total_quantity"]),
         Column("Автор",   _TEXT_RENDERER, lambda item: item["user_login"]),
     ]
 
