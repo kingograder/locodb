@@ -282,6 +282,15 @@ def _locomotive_model_name(item) -> str | None:
 def _detail_manufacturer_name(item) -> str | None:
     return item.manufacturer.name if item.manufacturer else None
 
+def _detail_code_sort_key(item) -> tuple[int, str]:
+    """Натуральная сортировка артикула: «9999» < «10000» < «10000-1»"""
+    code = str(item.code)
+    prefix, _, suffix = code.partition("-")
+    try:
+        numeric = int(prefix)
+    except ValueError:
+        numeric = 0
+    return (numeric, suffix)
 
 def _maintenance_locomotive_label(item) -> str | None:
     loco = item.locomotive
@@ -609,18 +618,11 @@ class DetailsTab(BaseTab):
         Column("Производитель", _TEXT_RENDERER, _detail_manufacturer_name,
                                                 _sorted_by(_detail_manufacturer_name, "")),
         Column("Артикул",       _TEXT_RENDERER, lambda item: str(item.code),
-                                                lambda item: item.code),
+                                                _detail_code_sort_key),
         Column("Наименование",  _TEXT_RENDERER, lambda item: item.name),
         Column("Остаток",       _TEXT_RENDERER, lambda item: str(item.quantity_in_stock),
                                                 lambda item: item.quantity_in_stock),
     ]
-
-    def _repo(self):
-        return self.services.details
-
-    def _delete_prompt(self, item) -> str:
-        return f"Удалить деталь «{item.name}»?\nДействие нельзя отменить."
-
 
 class MaintenancesTab(BaseTab):
     """Вкладка «Листы обслуживания»."""
