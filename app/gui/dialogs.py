@@ -128,7 +128,7 @@ def _validate_locomotive_fields(fields: dict) -> str | None:
 
 
 def _validate_detail_fields(fields: dict) -> str | None:
-    if error := _validate_int(fields["code"], "Артикул", min_value=0): return error
+    if error := _validate_detail_code(fields["code"]): return error
     if fields["manufacturer_id"] is None: return "Выберите производителя"
     if error := _validate_required(fields["name"], "наименование"): return error
     if error := _validate_int(fields["quantity_in_stock"], "Остаток", min_value=0): return error
@@ -140,6 +140,15 @@ def _validate_maintenance_fields(fields: dict) -> str | None:
     if fields["maintenance_type_id"] is None: return "Выберите тип обслуживания"
     return None
 
+def _validate_detail_code(value: str) -> str | None:
+    value = value.strip()
+    if not value:
+        return "Укажите артикул"
+    if len(value) > 16:
+        return "Артикул не может быть длиннее 16 символов"
+    if any(ch not in "0123456789-" for ch in value):
+        return "Артикул может содержать только цифры и дефис"
+    return None
 
 def _last_admin_message(will_be_admin: bool, will_be_active: bool) -> str:
     if not will_be_admin and not will_be_active:
@@ -506,7 +515,7 @@ class DetailDialog(QDialog):
             return
 
         payload = {
-            "code": int(fields["code"]),
+            "code": fields["code"].strip(),
             "manufacturer_id": fields["manufacturer_id"],
             "name": fields["name"],
             "quantity_in_stock": int(fields["quantity_in_stock"]),
