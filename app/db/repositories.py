@@ -348,9 +348,8 @@ class DetailRepository(BaseRepository[Detail]):
     )
     unique_fields = (("manufacturer_id", "code"),)
     unique_message = "Деталь с артикулом «{code}» у этого производителя уже есть"
-    strip_fields = ("name",)
+    strip_fields = ("name", "code")
     join_field = "manufacturer"
-
 
 class MaintenanceRepository(BaseRepository[Maintenance]):
     """Репозиторий листов обслуживания.
