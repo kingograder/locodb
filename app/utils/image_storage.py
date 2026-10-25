@@ -9,7 +9,7 @@ import uuid
 import logging
 from pathlib import Path
 
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QImageReader
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,22 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 IMAGES_DIR = DATA_DIR / "images"
 JPEG_QUALITY = 85
+
+
+def load_oriented_image(path: str | Path) -> QImage | None:
+    """Загружает изображение с учётом EXIF-ориентации.
+
+    Смартфоны сохраняют пиксели в «естественном» положении сенсора, а
+    поворот кладут в EXIF-тег Orientation. QImage читает пиксели как есть,
+    поэтому без autoTransform фото из телефона выглядят перевёрнутыми
+    (альбомная ориентация превращается в книжную и наоборот).
+
+    Возвращает None, если файл не читается.
+    """
+    reader = QImageReader(str(path))
+    reader.setAutoTransform(True)
+    image = reader.read()
+    return None if image.isNull() else image
 
 
 def _sanitize_filename_part(value: str) -> str:
@@ -42,8 +58,10 @@ def save_model_image(source_path: str, manufacturer_name: str, code: int) -> str
     filename = f"{stem}_{uuid.uuid4().hex[:8]}.jpeg"
     target = IMAGES_DIR / filename
 
-    image = QImage(source_path)
-    if image.isNull():
+    # EXIF применяем ДО сохранения: QImage.save() не пишет метаданные,
+    # поэтому иначе поворот из телефона «запёкся» бы неверным навсегда.
+    image = load_oriented_image(source_path)
+    if image is None:
         raise ValueError(f"Не удалось прочитать изображение: {source_path}")
 
     if not image.save(str(target), quality=JPEG_QUALITY):

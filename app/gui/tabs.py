@@ -1,33 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Вкладки со списками справочников.
-
-Все вкладки наследуются от BaseTab — общая логика (таблица, кнопки,
-reload, обработка ошибок, показ фото) описана один раз.
-
-Колонки каждой вкладки описываются одним словарём COLUMN_CONFIG:
-
-    COLUMN_CONFIG = {
-        "Заголовок": ("text",  lambda item: значение_или_None),
-        "Фото":      ("photo", lambda item: путь_к_картинке),
-    }
-
-Порядок ключей = порядок колонок в таблице. Тип "photo" кладёт в ячейку
-QLabel с картинкой (или заглушкой), тип "text" — обычный QTableWidgetItem.
-Если getter вернул None, в ячейку-текст попадёт NO_DATA.
+"""
+Вкладки со списками справочников.
 """
 
-
 import logging
+from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QPixmap, QPixmapCache
+from typing import Any, Callable, ClassVar, Protocol
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPixmap, QPixmapCache
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QHeaderView,
     QLabel,
     QMessageBox,
+    QTableWidget,
     QTableWidgetItem,
     QWidget,
 )
@@ -52,118 +42,85 @@ from app.gui.dialogs import (
     SupplyDialog,
 )
 from app.services import Services
-from app.utils.image_storage import PROJECT_ROOT
+from app.utils.image_storage import PROJECT_ROOT, load_oriented_image
 from app.widgets.ui_base_tab_widget import Ui_baseTab_widget
 
 logger = logging.getLogger(__name__)
 
 NO_DATA = "—"
-PHOTO_WIDTH = 96
-PHOTO_HEIGHT = 64
+PHOTO_HEIGHT = 64        # одинаковая высота превью — ровные строки таблицы
+PHOTO_MAX_WIDTH = 128    # предел для панорам — не расползаться на всю таблицу
 
-# (kind, getter) — kind сейчас "text" или "photo".
-ColumnSpec = tuple[str, Callable[[Any], Any]]
+WARNING_TITLE = "Внимание"
+ERROR_TITLE = "Ошибка"
+CONFIRM_TITLE = "Подтверждение"
 
 
-class BaseTab(QWidget):
-    """Общая логика вкладок-справочников.
+class CellRenderer(Protocol):
+    """Способ отрисовать одну ячейку таблицы по её значению."""
 
-    Наследнику нужно задать:
-        COLUMN_CONFIG    — словарь колонок (см. модульный docstring)
-        DIALOG_CLASS     — класс диалога создания/редактирования
-        NOT_FOUND_ERROR  — исключение "запись не найдена"
-        _repo()          — репозиторий, с которым работает вкладка
-        _delete_prompt() — текст вопроса при удалении
+    def render(self, table: QTableWidget, row: int, col: int, value: Any) -> None: ...
+
+
+class TextCellRenderer:
+    """Ячейка-текст: None превращается в NO_DATA."""
+
+    def render(self, table: QTableWidget, row: int, col: int, value: Any) -> None:
+        text = NO_DATA if value is None else str(value)
+        table.setItem(row, col, QTableWidgetItem(text))
+
+
+class PhotoCellRenderer:
+    """Ячейка-превью: QLabel с картинкой или заглушкой NO_DATA.
+
+    Отвечает только за загрузку файла и масштабирование. Структуры
+    таблицы не знает — ей передают table/row/col как параметры.
     """
 
-    COLUMN_CONFIG: dict[str, ColumnSpec] = {}
-    DIALOG_CLASS: type | None = None
-    NOT_FOUND_ERROR: type | None = None
-    ADD_LABEL = "Добавить"
-    EDIT_LABEL = "Изменить"
-    DELETE_LABEL = "Удалить"
+    def __init__(self, height: int = PHOTO_HEIGHT, max_width: int = PHOTO_MAX_WIDTH):
+        self._height = height
+        self._max_width = max_width
 
-    def __init__(self, services: Services, current_user, parent=None):
-        super().__init__(parent)
-        self.services = services
-        self.current_user = current_user
+    def render(self, table: QTableWidget, row: int, col: int, value: Any) -> None:
+        table.setCellWidget(row, col, self._build_label(value))
 
-        self.ui = Ui_baseTab_widget()
-        self.ui.setupUi(self)
+    def _build_label(self, path: str | None) -> QLabel:
+        label = self._create_label()
+        pixmap = self._load_pixmap(path)
+        if pixmap is None:
+            label.setText(NO_DATA)
+        else:
+            label.setPixmap(pixmap)
+        return label
 
-        table = self.ui.base_table
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-
-        self._setup_buttons()
-        self._items: list = []
-        self.reload()
-
-    def _setup_buttons(self) -> None:
-        """Задаёт подписи кнопок и подключает обработчики."""
-        self.ui.addBase_button.setText(self.ADD_LABEL)
-        self.ui.editBase_button.setText(self.EDIT_LABEL)
-        self.ui.deleteBase_button.setText(self.DELETE_LABEL)
-
-        self.ui.addBase_button.clicked.connect(self._on_add_clicked)
-        self.ui.editBase_button.clicked.connect(self._on_edit_clicked)
-        self.ui.deleteBase_button.clicked.connect(self._on_delete_clicked)
-
-    def _repo(self):
-        """Репозиторий вкладки. Переопределяется в наследниках."""
-        raise NotImplementedError
-
-    def _delete_prompt(self, item) -> str:
-        """Текст подтверждения удаления. Переопределяется в наследниках."""
-        raise NotImplementedError
-
-    def reload(self) -> None:
-        self._items = self._repo().list_all()
-        QPixmapCache.clear()
-        self._fill_table()
-
-    def _fill_table(self) -> None:
-        """Рисует таблицу по COLUMN_CONFIG и self._items."""
-        table = self.ui.base_table
-        columns = list(self.COLUMN_CONFIG.items())
-
-        table.setColumnCount(len(columns))
-        table.setHorizontalHeaderLabels([title for title, _ in columns])
-        table.setRowCount(len(self._items))
-
-        for row, item in enumerate(self._items):
-            for col, (_title, (kind, getter)) in enumerate(columns):
-                value = getter(item)
-                if kind == "photo":
-                    table.setCellWidget(
-                        row, col, self._build_photo_label(value)
-                    )
-                else:
-                    text = NO_DATA if value is None else str(value)
-                    table.setItem(row, col, QTableWidgetItem(text))
-
-    def _build_photo_label(self, path: str | None) -> QLabel:
-        """QLabel с картинкой или заглушкой, если файла нет."""
+    def _create_label(self) -> QLabel:
         label = QLabel()
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # Клик по картинке не перехватываем — пусть выделяется строка таблицы.
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-        pixmap = self._load_pixmap(path)
-        if pixmap is None:
-            label.setText(NO_DATA)
-            return label
-
-        label.setPixmap(pixmap)
         return label
 
     def _load_pixmap(self, path: str | None) -> QPixmap | None:
-        """Загружает и масштабирует фото. None, если файла нет или он битый.
+        file_path = self._resolve_path(path)
+        if file_path is None:
+            return None
 
-        Относительные пути (как хранятся в БД) строятся от корня проекта,
-        чтобы работало независимо от текущей рабочей директории процесса.
+        image = load_oriented_image(file_path)
+        if image is None:
+            logger.warning(f"Не удалось прочитать изображение: {file_path}")
+            return None
+
+        pixmap = self._make_thumbnail(image)
+        if pixmap.isNull():
+            logger.warning(f"Не удалось масштабировать изображение: {file_path}")
+            return None
+        return pixmap
+
+    def _resolve_path(self, path: str | None) -> Path | None:
+        """Возвращает абсолютный путь к существующему файлу или None.
+
+        Относительные пути в БД строятся от корня проекта, чтобы
+        отображение не зависело от текущей рабочей директории процесса.
         """
         if not path:
             return None
@@ -176,16 +133,192 @@ class BaseTab(QWidget):
             logger.warning(f"Файл изображения не найден: {file_path}")
             return None
 
-        pixmap = QPixmap(str(file_path))
-        if pixmap.isNull():
-            logger.warning(f"Не удалось прочитать изображение: {file_path}")
-            return None
+        return file_path
 
-        return pixmap.scaled(
-            QSize(PHOTO_WIDTH, PHOTO_HEIGHT),
-            Qt.AspectRatioMode.KeepAspectRatio,
+    def _make_thumbnail(self, image: QImage) -> QPixmap:
+        """Масштабирует фото под ячейку: фиксированная высота, ширина по пропорции.
+
+        Высота всегда self._height, ширина ограничена self._max_width:
+        широкие кадры остаются крупными, панорамы не расползаются на всю таблицу.
+        """
+        if image.isNull() or image.height() == 0:
+            return QPixmap()
+
+        aspect = image.width() / image.height()
+        width = round(self._height * aspect)
+        height = self._height
+
+        if width > self._max_width:
+            width = self._max_width
+            height = max(1, round(width / aspect))
+
+        # Пропорции учтены в width/height — IgnoreAspectRatio не искажает.
+        scaled = image.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        return QPixmap.fromImage(scaled)
+
+
+@dataclass(frozen=True)
+class Column:
+    """Заголовок, рендерер ячейки и getter значения для одной колонки."""
+
+    title: str
+    renderer: CellRenderer
+    getter: Callable[[Any], Any]
+
+
+class TableRenderer:
+    """Рисует таблицу по списку Column и списку записей.
+
+    Не знает, откуда пришли записи и что они собой представляют —
+    только делегирует значение каждой ячейки её рендереру.
+    """
+
+    def __init__(self, columns: list[Column]):
+        self._columns = columns
+
+    def render(self, table: QTableWidget, items: list) -> None:
+        self._configure(table, row_count=len(items))
+        for row, item in enumerate(items):
+            self._render_row(table, row, item)
+        table.resizeRowsToContents()
+
+    def _configure(self, table: QTableWidget, row_count: int) -> None:
+        table.setColumnCount(len(self._columns))
+        table.setHorizontalHeaderLabels([c.title for c in self._columns])
+        table.setRowCount(row_count)
+
+    def _render_row(self, table: QTableWidget, row: int, item: Any) -> None:
+        for col, column in enumerate(self._columns):
+            column.renderer.render(table, row, col, column.getter(item))
+
+
+_TEXT_RENDERER = TextCellRenderer()
+_PHOTO_RENDERER = PhotoCellRenderer()
+
+
+def _locomotive_manufacturer_name(item) -> str | None:
+    """Имя производителя модели локомотива; None, если связь не заполнена."""
+    model = item.model
+    if model is None or model.manufacturer is None:
+        return None
+    return model.manufacturer.name
+
+
+def _locomotive_model_image_path(item) -> str | None:
+    return item.model.image_path if item.model else None
+
+
+def _locomotive_model_code(item) -> str | None:
+    return str(item.model.code) if item.model else None
+
+
+def _locomotive_model_name(item) -> str | None:
+    return item.model.name if item.model else None
+
+
+def _detail_manufacturer_name(item) -> str | None:
+    return item.manufacturer.name if item.manufacturer else None
+
+
+def _maintenance_locomotive_label(item) -> str | None:
+    loco = item.locomotive
+    return f"{loco.system} {loco.number}" if loco else None
+
+
+def _maintenance_type_name(item) -> str | None:
+    return item.maintenance_type.name if item.maintenance_type else None
+
+
+def _maintenance_author_name(item) -> str | None:
+    user = item.user
+    return f"{user.first_name} {user.last_name}" if user else None
+
+
+def _maintenance_date(item) -> str | None:
+    return item.date.strftime("%d.%m.%Y") if item.date else None
+
+
+def _batch_number(item) -> str:
+    return str(item["number"])
+
+
+def _batch_created_at(item) -> str:
+    return item["created_at"].strftime("%d.%m.%Y %H:%M")
+
+
+class _TabBaseMeta(type(QWidget), ABCMeta):
+    """Метакласс-мост между Shiboken и ABC.
+
+    QWidget из PySide6 использует Shiboken.ObjectType, ABC — ABCMeta.
+    Оба наследуют type, но не друг друга, поэтому Python не может
+    вывести общий метакласс и падает с TypeError. Пустой наследник
+    обоих снимает конфликт, не добавляя поведения.
+    """
+
+
+class _TabBase(QWidget, metaclass=_TabBaseMeta):
+    """Каркас вкладки-справочника: таблица, кнопки, выбор, reload.
+
+    Не знает ни источника данных, ни типа строки — только то, что
+    умеет показать таблицу по COLUMN_CONFIG и обработать клики.
+
+    Наследнику обязательно задать:
+        COLUMN_CONFIG      — список Column
+        DIALOG_CLASS       — класс диалога создания/редактирования
+        _reload_items()    — как получить строки таблицы
+        _open_dialog_for_edit(item) — как открыть диалог редактирования
+        _delete(item)      — как удалить запись (с обработкой ошибок)
+        _delete_prompt(item) — текст вопроса при удалении
+    """
+
+    COLUMN_CONFIG: ClassVar[list[Column]]
+    DIALOG_CLASS: ClassVar[type[QDialog]]
+
+    ADD_LABEL = "Добавить"
+    EDIT_LABEL = "Изменить"
+    DELETE_LABEL = "Удалить"
+    EMPTY_SELECTION_MESSAGE = "Выберите запись"
+
+    def __init__(self, services: Services, current_user, parent=None):
+        super().__init__(parent)
+        self.services = services
+        self.current_user = current_user
+
+        self.ui = Ui_baseTab_widget()
+        self.ui.setupUi(self)
+
+        self._table_renderer = TableRenderer(self.COLUMN_CONFIG)
+        self._items: list = []
+
+        self._configure_table()
+        self._setup_buttons()
+        self.reload()
+
+    def _configure_table(self) -> None:
+        table = self.ui.base_table
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+    def _setup_buttons(self) -> None:
+        self.ui.addBase_button.setText(self.ADD_LABEL)
+        self.ui.editBase_button.setText(self.EDIT_LABEL)
+        self.ui.deleteBase_button.setText(self.DELETE_LABEL)
+
+        self.ui.addBase_button.clicked.connect(self._on_add_clicked)
+        self.ui.editBase_button.clicked.connect(self._on_edit_clicked)
+        self.ui.deleteBase_button.clicked.connect(self._on_delete_clicked)
+
+    def reload(self) -> None:
+        self._items = self._reload_items()
+        QPixmapCache.clear()
+        self._table_renderer.render(self.ui.base_table, self._items)
 
     def _selected_item(self):
         """Возвращает выбранную запись или None."""
@@ -194,51 +327,101 @@ class BaseTab(QWidget):
             return None
         return self._items[row]
 
+    def _require_selection(self):
+        """Возвращает выбранную запись; при пустом выборе предупреждает и None."""
+        item = self._selected_item()
+        if item is None:
+            QMessageBox.information(self, WARNING_TITLE, self.EMPTY_SELECTION_MESSAGE)
+        return item
+
     def _on_add_clicked(self) -> None:
-        """Открывает диалог создания."""
         dialog = self.DIALOG_CLASS(self.services, self.current_user, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
 
     def _on_edit_clicked(self) -> None:
-        """Открывает диалог редактирования."""
-        item = self._selected_item()
-        if item is None:
-            QMessageBox.information(self, "Внимание", "Выберите запись")
-            return
+        item = self._require_selection()
+        if item is not None:
+            self._open_dialog_for_edit(item)
 
+    def _on_delete_clicked(self) -> None:
+        item = self._require_selection()
+        if item is not None and self._confirm_delete(item):
+            self._delete(item)
+
+    def _confirm_delete(self, item) -> bool:
+        reply = QMessageBox.question(
+            self,
+            CONFIRM_TITLE,
+            self._delete_prompt(item),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
+
+    @abstractmethod
+    def _reload_items(self) -> list: ...
+
+    @abstractmethod
+    def _open_dialog_for_edit(self, item) -> None: ...
+
+    @abstractmethod
+    def _delete(self, item) -> None: ...
+
+    @abstractmethod
+    def _delete_prompt(self, item) -> str: ...
+
+
+class BaseTab(_TabBase):
+    """Вкладка справочника, строки — ORM-объекты из репозитория.
+
+    Наследнику задать:
+        DIALOG_CLASS       — класс диалога
+        NOT_FOUND_ERROR    — исключение "запись не найдена"
+        COLUMN_CONFIG      — колонки
+        _repo()            — репозиторий вкладки
+        _delete_prompt(item) — текст вопроса при удалении
+    """
+
+    NOT_FOUND_ERROR: ClassVar[type[BaseException]]
+
+    def _repo(self):
+        """Репозиторий вкладки. Переопределяется в наследниках."""
+        raise NotImplementedError
+
+    def _reload_items(self) -> list:
+        return self._repo().list_all()
+
+    def _open_dialog_for_edit(self, item) -> None:
         dialog = self.DIALOG_CLASS(
             self.services, self.current_user, item, parent=self
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
 
-    def _on_delete_clicked(self) -> None:
-        """Удаляет выбранную запись после подтверждения."""
-        item = self._selected_item()
-        if item is None:
-            QMessageBox.information(self, "Внимание", "Выберите запись")
-            return
-
-        reply = QMessageBox.question(
-            self,
-            "Подтверждение",
-            self._delete_prompt(item),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
+    def _delete(self, item) -> None:
+        not_found = self.NOT_FOUND_ERROR
         try:
             self._repo().delete(item.id)
         except EntityInUseError as exc:
-            QMessageBox.warning(self, "Внимание", str(exc))
+            QMessageBox.warning(self, WARNING_TITLE, str(exc))
             return
-        except self.NOT_FOUND_ERROR:
-            QMessageBox.critical(self, "Ошибка", "Запись уже удалена")
+        except not_found:
+            QMessageBox.critical(self, ERROR_TITLE, "Запись уже удалена")
             return
-
         self.reload()
+
+
+class BatchTab(_TabBase):
+    """Вкладка, строки — словари партий (групп записей).
+
+    Наследнику задать:
+        DIALOG_CLASS       — класс диалога
+        COLUMN_CONFIG      — колонки (getter принимает dict)
+        _reload_items()    — как собрать партии
+        _open_dialog_for_edit(item) — как открыть диалог по партии
+        _delete(item)      — как удалить партию
+        _delete_prompt(item) — текст вопроса при удалении
+    """
 
 
 class MaintenanceTypesTab(BaseTab):
@@ -247,9 +430,9 @@ class MaintenanceTypesTab(BaseTab):
     DIALOG_CLASS = MaintenanceTypeDialog
     NOT_FOUND_ERROR = MaintenanceTypeNotFoundError
 
-    COLUMN_CONFIG = {
-        "Название": ("text", lambda it: it.name),
-    }
+    COLUMN_CONFIG = [
+        Column("Название", _TEXT_RENDERER, lambda item: item.name),
+    ]
 
     def _repo(self):
         return self.services.maintenance_types
@@ -264,9 +447,9 @@ class ManufacturersTab(BaseTab):
     DIALOG_CLASS = ManufacturerDialog
     NOT_FOUND_ERROR = ManufacturerNotFoundError
 
-    COLUMN_CONFIG = {
-        "Название": ("text", lambda it: it.name),
-    }
+    COLUMN_CONFIG = [
+        Column("Название", _TEXT_RENDERER, lambda item: item.name),
+    ]
 
     def _repo(self):
         return self.services.manufacturers
@@ -281,12 +464,12 @@ class LocomotiveModelsTab(BaseTab):
     DIALOG_CLASS = LocomotiveModelDialog
     NOT_FOUND_ERROR = LocomotiveModelNotFoundError
 
-    COLUMN_CONFIG = {
-        "Фото":          ("photo", lambda it: it.image_path),
-        "Производитель": ("text",  lambda it: it.manufacturer.name),
-        "Артикул":       ("text",  lambda it: str(it.code)),
-        "Модель":        ("text",  lambda it: it.name),
-    }
+    COLUMN_CONFIG = [
+        Column("Фото",          _PHOTO_RENDERER, lambda item: item.image_path),
+        Column("Производитель", _TEXT_RENDERER,  lambda item: item.manufacturer.name),
+        Column("Артикул",       _TEXT_RENDERER,  lambda item: str(item.code)),
+        Column("Модель",        _TEXT_RENDERER,  lambda item: item.name),
+    ]
 
     def _repo(self):
         return self.services.locomotive_models
@@ -307,15 +490,14 @@ class LocomotivesTab(BaseTab):
     DIALOG_CLASS = LocomotiveDialog
     NOT_FOUND_ERROR = LocomotiveNotFoundError
 
-    COLUMN_CONFIG = {
-        "Система":       ("text",  lambda it: str(it.system)),
-        "Номер":         ("text",  lambda it: str(it.number)),
-        "Фото":          ("photo", lambda it: it.model.image_path if it.model else None),
-        "Производитель": ("text",  lambda it: it.model.manufacturer.name
-                                       if it.model and it.model.manufacturer else None),
-        "Артикул":       ("text",  lambda it: str(it.model.code) if it.model else None),
-        "Модель":        ("text",  lambda it: it.model.name if it.model else None),
-    }
+    COLUMN_CONFIG = [
+        Column("Система",       _TEXT_RENDERER,  lambda item: str(item.system)),
+        Column("Номер",         _TEXT_RENDERER,  lambda item: str(item.number)),
+        Column("Фото",          _PHOTO_RENDERER, _locomotive_model_image_path),
+        Column("Производитель", _TEXT_RENDERER,  _locomotive_manufacturer_name),
+        Column("Артикул",       _TEXT_RENDERER,  _locomotive_model_code),
+        Column("Модель",        _TEXT_RENDERER,  _locomotive_model_name),
+    ]
 
     def _repo(self):
         return self.services.locomotives
@@ -333,12 +515,12 @@ class DetailsTab(BaseTab):
     DIALOG_CLASS = DetailDialog
     NOT_FOUND_ERROR = DetailNotFoundError
 
-    COLUMN_CONFIG = {
-        "Производитель": ("text", lambda it: it.manufacturer.name if it.manufacturer else None),
-        "Артикул":       ("text", lambda it: str(it.code)),
-        "Наименование":  ("text", lambda it: it.name),
-        "Остаток":       ("text", lambda it: str(it.quantity_in_stock)),
-    }
+    COLUMN_CONFIG = [
+        Column("Производитель", _TEXT_RENDERER, _detail_manufacturer_name),
+        Column("Артикул",       _TEXT_RENDERER, lambda item: str(item.code)),
+        Column("Наименование",  _TEXT_RENDERER, lambda item: item.name),
+        Column("Остаток",       _TEXT_RENDERER, lambda item: str(item.quantity_in_stock)),
+    ]
 
     def _repo(self):
         return self.services.details
@@ -354,17 +536,13 @@ class MaintenancesTab(BaseTab):
     NOT_FOUND_ERROR = MaintenanceNotFoundError
     DELETE_LABEL = "Пометить на удаление"
 
-    COLUMN_CONFIG = {
-        "Локомотив": ("text", lambda it: f"{it.locomotive.system} {it.locomotive.number}"
-                                         if it.locomotive else None),
-        "Тип":       ("text", lambda it: it.maintenance_type.name
-                                         if it.maintenance_type else None),
-        "Комментарий": ("text", lambda it: it.description or ""),
-        "Автор":     ("text", lambda it: f"{it.user.first_name} {it.user.last_name}"
-                                         if it.user else None),
-        "Дата":        ("text", lambda it: it.date.strftime("%d.%m.%Y")
-                                               if it.date else None),
-    }
+    COLUMN_CONFIG = [
+        Column("Локомотив",   _TEXT_RENDERER, _maintenance_locomotive_label),
+        Column("Тип",         _TEXT_RENDERER, _maintenance_type_name),
+        Column("Комментарий", _TEXT_RENDERER, lambda item: item.description or ""),
+        Column("Автор",       _TEXT_RENDERER, _maintenance_author_name),
+        Column("Дата",        _TEXT_RENDERER, _maintenance_date),
+    ]
 
     def _repo(self):
         return self.services.maintenances
@@ -373,38 +551,46 @@ class MaintenancesTab(BaseTab):
         return f"Пометить на удаление лист обслуживания {item.id}?"
 
 
-class SuppliesTab(BaseTab):
+class SuppliesTab(BatchTab):
     """Вкладка «Приход».
 
-    В БД каждая деталь — отдельная запись Supply, но объединены они
-    номером supply_number. Поэтому таблица показывает партии: одна строка =
-    один номер прихода, а не одна запись.
-
-    Getter-ы COLUMN_CONFIG здесь принимают словарь партии (dict), а не
-    ORM-объект — это видно по обращениям вида batch["number"].
+    В БД каждая деталь — отдельная запись Supply, объединённая номером
+    supply_number. Таблица показывает партии: одна строка = один приход.
+    Getter-ы COLUMN_CONFIG принимают словарь партии, а не ORM-объект.
     """
 
+    DIALOG_CLASS = SupplyDialog
     ADD_LABEL = "Создать приход"
     EDIT_LABEL = "Изменить"
     DELETE_LABEL = "Удалить"
+    EMPTY_SELECTION_MESSAGE = "Выберите приход"
 
-    COLUMN_CONFIG = {
-        "Номер":   ("text", lambda b: str(b["number"])),
-        "Дата":    ("text", lambda b: b["created_at"].strftime("%d.%m.%Y %H:%M")),
-        "Деталей": ("text", lambda b: str(b["positions"])),
-        "Всего":   ("text", lambda b: str(b["total_quantity"])),
-        "Автор":   ("text", lambda b: b["user_login"]),
-    }
+    COLUMN_CONFIG = [
+        Column("Номер",   _TEXT_RENDERER, _batch_number),
+        Column("Дата",    _TEXT_RENDERER, _batch_created_at),
+        Column("Деталей", _TEXT_RENDERER, lambda item: str(item["positions"])),
+        Column("Всего",   _TEXT_RENDERER, lambda item: str(item["total_quantity"])),
+        Column("Автор",   _TEXT_RENDERER, lambda item: item["user_login"]),
+    ]
 
-    def reload(self) -> None:
-        """Перечитывает партии приходов и рисует таблицу.
+    def _reload_items(self) -> list:
+        return self.services.supplies.list_batches()
 
-        Переопределяем метод, потому что BaseTab берёт данные из
-        _repo().list_all(), а здесь нужна группировка по supply_number.
-        Отрисовка остаётся общей — _fill_table() разберёт COLUMN_CONFIG.
-        """
-        self._items = self.services.supplies.list_batches()
-        self._fill_table()
+    def _open_dialog_for_edit(self, item) -> None:
+        dialog = SupplyDialog(
+            self.services, self.current_user,
+            supply_number=item["number"], parent=self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.reload()
+
+    def _delete(self, item) -> None:
+        try:
+            self.services.supplies.delete_batch(item["number"])
+        except SupplyNotFoundError:
+            QMessageBox.critical(self, ERROR_TITLE, "Приход уже удалён")
+            return
+        self.reload()
 
     def _delete_prompt(self, item) -> str:
         return (
@@ -412,57 +598,15 @@ class SuppliesTab(BaseTab):
             f"Остатки деталей вернутся на склад."
         )
 
-    def _on_add_clicked(self) -> None:
-        """Открывает диалог создания нового прихода."""
-        dialog = SupplyDialog(self.services, self.current_user, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.reload()
-
-    def _on_edit_clicked(self) -> None:
-        """Открывает диалог редактирования выбранной партии."""
-        batch = self._selected_item()
-        if batch is None:
-            QMessageBox.information(self, "Внимание", "Выберите приход")
-            return
-
-        dialog = SupplyDialog(
-            self.services, self.current_user,
-            supply_number=batch["number"], parent=self,
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.reload()
-
-    def _on_delete_clicked(self) -> None:
-        """Удаляет выбранную партию после подтверждения."""
-        batch = self._selected_item()
-        if batch is None:
-            QMessageBox.information(self, "Внимание", "Выберите приход")
-            return
-
-        reply = QMessageBox.question(
-            self,
-            "Подтверждение",
-            self._delete_prompt(batch),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        try:
-            self.services.supplies.delete_batch(batch["number"])
-        except SupplyNotFoundError:
-            QMessageBox.critical(self, "Ошибка", "Приход уже удалён")
-            return
-
-        self.reload()
-
 
 __all__ = [
     "BaseTab",
+    "BatchTab",
     "MaintenanceTypesTab",
     "ManufacturersTab",
     "LocomotiveModelsTab",
     "LocomotivesTab",
     "DetailsTab",
     "MaintenancesTab",
+    "SuppliesTab",
 ]
