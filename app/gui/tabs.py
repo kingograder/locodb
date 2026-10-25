@@ -624,6 +624,12 @@ class DetailsTab(BaseTab):
                                                 lambda item: item.quantity_in_stock),
     ]
 
+    def _repo(self):
+        return self.services.details
+
+    def _delete_prompt(self, item) -> str:
+        return f"Удалить деталь «{item.name}»?\nДействие нельзя отменить."
+
 class MaintenancesTab(BaseTab):
     """Вкладка «Листы обслуживания»."""
 
