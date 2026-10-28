@@ -164,12 +164,12 @@ def _locomotive_label(loco) -> str:
 
 def _model_label(model) -> str:
     man = model.manufacturer.name if model.manufacturer else NO_DATA
-    return f"M:{man} Art:{model.code}"
+    return f"{man} {model.code}"
 
 
 def _detail_label(detail) -> str:
     man = detail.manufacturer.name if detail.manufacturer else NO_DATA
-    return f"M:{man} Art:{detail.code} {detail.name}"
+    return f"M: {man}  Art: {detail.code}  Name: {detail.name}"
 
 
 class DetailRowsEditor:
