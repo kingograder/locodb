@@ -49,11 +49,15 @@ _NOT_FOUND = (
 )
 
 
-def _fill_combo(combo, items, label_func, data_func=lambda i: i.id,
-                placeholder=PLACEHOLDER, sort_key=None):
+def _fill_combo(
+    combo: QComboBox,
+    items: list,
+    label_func: Callable[[Any], str],
+    data_func: Callable[[Any], Any] = lambda item: item.id,
+    placeholder: str | None = PLACEHOLDER,
+) -> None:
+    """Заполняет combo, настраивая плейсхолдер для обычного или редактируемого вида."""
     combo.clear()
-    if sort_key is not None:
-        items = sorted(items, key=sort_key)
 
     if combo.isEditable():
         for item in items:
@@ -412,7 +416,6 @@ class LocomotiveDialog(QDialog):
             self.ui.locomotiveModel_comboBox,
             self.services.locomotive_models.list_all(),
             _model_label,
-            sort_key=lambda m: (m.manufacturer.casefold(), m.number),
         )
 
         if item is None:
