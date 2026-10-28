@@ -55,9 +55,17 @@ def _fill_combo(
     label_func: Callable[[Any], str],
     data_func: Callable[[Any], Any] = lambda item: item.id,
     placeholder: str | None = PLACEHOLDER,
+    sort_key: Callable[[Any], Any] | None = None,
 ) -> None:
-    """Заполняет combo, настраивая плейсхолдер для обычного или редактируемого вида."""
+    """Заполняет combo, настраивая плейсхолдер для обычного или редактируемого вида.
+
+    sort_key — необязательный ключ сортировки элементов (применяется до вставки
+    плейсхолдера, чтобы заглушка всегда оставалась на индексе 0).
+    """
     combo.clear()
+
+    if sort_key is not None:
+        items = sorted(items, key=sort_key)
 
     if combo.isEditable():
         for item in items:
@@ -416,6 +424,7 @@ class LocomotiveDialog(QDialog):
             self.ui.locomotiveModel_comboBox,
             self.services.locomotive_models.list_all(),
             _model_label,
+            sort_key=lambda m: (m.manufacturer.name.casefold(), m.code),
         )
 
         if item is None:
