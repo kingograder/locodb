@@ -149,8 +149,8 @@ def _validate_detail_code(value: str) -> str | None:
         return "Укажите артикул"
     if len(value) > 16:
         return "Артикул не может быть длиннее 16 символов"
-    if any(ch not in "0123456789-" for ch in value):
-        return "Артикул может содержать только цифры и дефис"
+    if any(ch not in "0123456789-ET" for ch in value):
+        return "Артикул может содержать только цифры, дефис и ,буквы ET"
     return None
 
 def _last_admin_message(will_be_admin: bool, will_be_active: bool) -> str:
