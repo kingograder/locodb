@@ -617,7 +617,7 @@ class DetailsTab(BaseTab):
     COLUMN_CONFIG = [
         Column("Производитель", _TEXT_RENDERER, _detail_manufacturer_name,
                                                 _sorted_by(_detail_manufacturer_name, "")),
-        Column("Артикул",       _TEXT_RENDERER, lambda item: str(item.code),
+        Column("Артикул",       _TEXT_RENDERER, lambda item: str(item.code).upper(),
                                                 _detail_code_sort_key),
         Column("Наименование",  _TEXT_RENDERER, lambda item: item.name),
         Column("Остаток",       _TEXT_RENDERER, lambda item: str(item.quantity_in_stock),
